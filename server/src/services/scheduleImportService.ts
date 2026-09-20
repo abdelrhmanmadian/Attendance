@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { toUtcRange } from "./scheduleService.js";
+import { recomputeWindowIfCodeExists } from "./codeService.js";
 import { todayCairoDateOnly } from "../lib/time.js";
 import { recordAudit } from "../lib/auditLog.js";
 import type { ImportRow } from "../validators/scheduleImport.js";
@@ -52,6 +53,12 @@ export async function commitScheduleImport(rows: ImportRow[], managerId: string)
     newValue: { createdSessions: result.createdCount, deletedSessions: result.deletedCount, newDoctors: createdDoctorNames },
     note: `Imported schedule: ${result.createdCount} session(s) created, ${result.deletedCount} future session(s) replaced, ${createdDoctorNames.length} new doctor(s) added`,
   });
+
+  const touched = new Set(sessionsData.map((s) => `${s.doctorId}:${s.date.getTime()}`));
+  for (const key of touched) {
+    const [doctorId, dateMs] = key.split(":");
+    await recomputeWindowIfCodeExists(doctorId, new Date(Number(dateMs)));
+  }
 
   return {
     createdSessions: result.createdCount,

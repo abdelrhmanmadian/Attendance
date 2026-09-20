@@ -2,6 +2,7 @@ import { addDays, differenceInCalendarDays } from "date-fns";
 import { prisma } from "../lib/prisma.js";
 import { cairoDateOnly, cairoWallTimeToUtc, toCairoDateStr, toCairoTimeStr } from "../lib/time.js";
 import { recordAudit } from "../lib/auditLog.js";
+import { recomputeWindowIfCodeExists } from "./codeService.js";
 
 export class LockedSessionError extends Error {
   constructor() {
@@ -29,7 +30,7 @@ export async function createSession(input: {
   doctorId: string;
 }) {
   const { dateOnly, start, end } = toUtcRange(input.date, input.startTime, input.endTime);
-  return prisma.session.create({
+  const session = await prisma.session.create({
     data: {
       date: dateOnly,
       type: input.type,
@@ -41,6 +42,8 @@ export async function createSession(input: {
       doctorId: input.doctorId,
     },
   });
+  await recomputeWindowIfCodeExists(input.doctorId, dateOnly);
+  return session;
 }
 
 export async function updateSession(
@@ -98,6 +101,11 @@ export async function updateSession(
     });
   }
 
+  await recomputeWindowIfCodeExists(updated.doctorId, updated.date);
+  if (updated.doctorId !== existing.doctorId || updated.date.getTime() !== existing.date.getTime()) {
+    await recomputeWindowIfCodeExists(existing.doctorId, existing.date);
+  }
+
   return updated;
 }
 
@@ -121,6 +129,8 @@ export async function deleteSession(id: string, overrideNote: string | undefined
     });
   }
 
+  await recomputeWindowIfCodeExists(existing.doctorId, existing.date);
+
   return existing;
 }
 
@@ -128,6 +138,7 @@ async function shiftSessions(fromDate: string, toDate: string, dayCount: number,
   const fromDateOnly = cairoDateOnly(fromDate);
   const dayOffset = differenceInCalendarDays(cairoDateOnly(toDate), fromDateOnly);
   const created = [];
+  const touched = new Map<string, { doctorId: string; date: Date }>();
 
   for (let i = 0; i < dayCount; i++) {
     const sourceDate = addDays(fromDateOnly, i);
@@ -150,7 +161,12 @@ async function shiftSessions(fromDate: string, toDate: string, dayCount: number,
         },
       });
       created.push(copy);
+      touched.set(`${copy.doctorId}:${newDate.getTime()}`, { doctorId: copy.doctorId, date: newDate });
     }
+  }
+
+  for (const { doctorId, date } of touched.values()) {
+    await recomputeWindowIfCodeExists(doctorId, date);
   }
 
   await recordAudit({
