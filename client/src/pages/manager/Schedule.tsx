@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError } from "../../api/client";
 import ScheduleImportModal from "../../components/ScheduleImportModal";
+import PdfScheduleImportModal from "../../components/PdfScheduleImportModal";
 
 interface Doctor {
   id: string;
@@ -47,6 +48,7 @@ export default function Schedule() {
   const [loading, setLoading] = useState(true);
   const [duplicateTarget, setDuplicateTarget] = useState(selectedDate);
   const [showImport, setShowImport] = useState(false);
+  const [showPdfImport, setShowPdfImport] = useState(false);
 
   async function loadSessions() {
     setLoading(true);
@@ -157,17 +159,34 @@ export default function Schedule() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-800">Schedule</h1>
-        <button
-          onClick={() => setShowImport(true)}
-          className="bg-slate-800 text-white rounded px-4 py-2 text-sm font-medium"
-        >
-          Change Schedule
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="bg-slate-800 text-white rounded px-4 py-2 text-sm font-medium"
+          >
+            Change Schedule (Excel)
+          </button>
+          <button
+            onClick={() => setShowPdfImport(true)}
+            className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+          >
+            Import from PDF
+          </button>
+        </div>
       </div>
 
       {showImport && (
         <ScheduleImportModal
           onClose={() => setShowImport(false)}
+          onImported={() => {
+            loadSessions();
+          }}
+        />
+      )}
+
+      {showPdfImport && (
+        <PdfScheduleImportModal
+          onClose={() => setShowPdfImport(false)}
           onImported={() => {
             loadSessions();
           }}
