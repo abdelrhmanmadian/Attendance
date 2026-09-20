@@ -6,6 +6,7 @@ import { env } from "./env.js";
 import { authRouter } from "./routes/auth.js";
 import { doctorsRouter } from "./routes/doctors.js";
 import { sessionsRouter } from "./routes/sessions.js";
+import { scheduleImportRouter } from "./routes/scheduleImport.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 
 const app = express();
@@ -36,6 +37,7 @@ app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRouter);
 app.use("/api/doctors", doctorsRouter);
 app.use("/api/sessions", sessionsRouter);
+app.use("/api/schedule-import", scheduleImportRouter);
 
 app.use(errorHandler);
 
