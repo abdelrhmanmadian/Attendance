@@ -1,8 +1,12 @@
+import "express-async-errors";
 import express from "express";
 import cors from "cors";
 import session from "express-session";
 import { env } from "./env.js";
 import { authRouter } from "./routes/auth.js";
+import { doctorsRouter } from "./routes/doctors.js";
+import { sessionsRouter } from "./routes/sessions.js";
+import { errorHandler } from "./middleware/errorHandler.js";
 
 const app = express();
 
@@ -30,6 +34,10 @@ app.use(
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRouter);
+app.use("/api/doctors", doctorsRouter);
+app.use("/api/sessions", sessionsRouter);
+
+app.use(errorHandler);
 
 app.listen(env.PORT, () => {
   console.log(`Server listening on http://localhost:${env.PORT}`);
