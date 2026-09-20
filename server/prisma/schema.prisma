@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Manager {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  passwordHash       String
+  mustChangePassword Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Doctor {
+  id         String   @id @default(cuid())
+  name       String
+  department String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  sessions    Session[]
+  codes       Code[]
+  attendances Attendance[]
+
+  @@index([active])
+}
+
+// Free text rather than a fixed enum: real timetables include Lecture, Tutorial,
+// Lab, Studio, Seminar, etc. Managers can type whatever their curriculum uses.
+model Session {
+  id        String   @id @default(cuid())
+  date      DateTime // Cairo calendar date, stored as UTC midnight
+  type      String // e.g. "Lecture", "Tutorial", "Lab", "Studio"
+  title     String // course code + name, e.g. "EBA1103 Physics I"
+  groupName String? // student group/section, e.g. "1AR1" (display/filter only)
+  start     DateTime // UTC instant
+  end       DateTime // UTC instant
+  location  String
+  doctorId  String
+  doctor    Doctor   @relation(fields: [doctorId], references: [id])
+  locked    Boolean  @default(false) // true once attendance exists against this doctor/day
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([doctorId, date])
+}
+
+model Code {
+  id         String   @id @default(cuid())
+  code       String
+  doctorId   String
+  doctor     Doctor   @relation(fields: [doctorId], references: [id])
+  date       DateTime // Cairo calendar date, stored as UTC midnight
+  validFrom  DateTime // UTC instant
+  validUntil DateTime // UTC instant
+  revoked    Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([doctorId, date])
+  @@index([date])
+}
+
+// SQLite has no native enum support in Prisma; validated in app code via
+// the AttendanceStatus union in src/lib/attendanceStatus.ts instead.
+model Attendance {
+  id                String    @id @default(cuid())
+  doctorId          String
+  doctor            Doctor    @relation(fields: [doctorId], references: [id])
+  doctorName        String // snapshot, survives rename
+  date              DateTime // Cairo calendar date, UTC midnight
+  checkInTime       DateTime? // UTC instant, null for Absent
+  status            String // "PRESENT" | "LATE" | "ABSENT"
+  minutesLate       Int       @default(0)
+  codeUsed          String?
+  sessionsScheduled String // "Lecture 09:00 Anatomy; Tutorial 13:00 Ward A"
+  syncedToSheet     Boolean   @default(false)
+  syncAttempts      Int       @default(0)
+  lastSyncError     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@unique([doctorId, date])
+  @@index([date])
+  @@index([syncedToSheet])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  managerId String
+  action    String
+  entity    String
+  oldValue  String?
+  newValue  String?
+  note      String
+  createdAt DateTime @default(now())
+
+  @@index([entity])
+  @@index([createdAt])
+}
+
+model Settings {
+  id              Int @id @default(1)
+  codeLength      Int @default(6)
+  windowBeforeMin Int @default(15)
+  windowAfterMin  Int @default(15)
+  gracePeriodMin  Int @default(10)
+}
+
+model CheckInAttempt {
+  id         String   @id @default(cuid())
+  ip         String
+  doctorName String?
+  codeTried  String?
+  result     String
+  createdAt  DateTime @default(now())
+
+  @@index([ip, createdAt])
+  @@index([doctorName, createdAt])
+}
