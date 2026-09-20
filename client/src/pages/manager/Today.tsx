@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "../../api/client";
 import ProjectorCodeView from "../../components/ProjectorCodeView";
+import OverrideModal from "../../components/OverrideModal";
 
 interface Session {
   id: string;
@@ -19,10 +20,18 @@ interface Code {
   revoked: boolean;
 }
 
+interface AttendanceInfo {
+  id: string;
+  status: "PRESENT" | "LATE" | "ABSENT";
+  checkInTime: string | null;
+  minutesLate: number;
+}
+
 interface DoctorRow {
   doctor: { id: string; name: string };
   sessions: Session[];
   code: Code | null;
+  attendance: AttendanceInfo | null;
 }
 
 interface TodayResponse {
@@ -42,6 +51,7 @@ export default function Today() {
   const [error, setError] = useState<string | null>(null);
   const [busyDoctorId, setBusyDoctorId] = useState<string | null>(null);
   const [projectorRow, setProjectorRow] = useState<DoctorRow | null>(null);
+  const [overrideRow, setOverrideRow] = useState<DoctorRow | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -165,6 +175,25 @@ export default function Today() {
                   )}
                 </div>
               )}
+              {row.attendance && (
+                <div className="text-sm mt-1">
+                  <span
+                    className={
+                      row.attendance.status === "PRESENT"
+                        ? "text-green-700 font-medium"
+                        : row.attendance.status === "LATE"
+                          ? "text-amber-600 font-medium"
+                          : "text-red-600 font-medium"
+                    }
+                  >
+                    {row.attendance.status}
+                    {row.attendance.status === "LATE" && ` (${row.attendance.minutesLate}m)`}
+                  </span>
+                  {row.attendance.checkInTime && (
+                    <span className="text-xs text-slate-400 ml-2">at {formatTime(row.attendance.checkInTime)}</span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex gap-2 flex-wrap">
               {!row.code || row.code.revoked ? (
@@ -199,6 +228,12 @@ export default function Today() {
                   </button>
                 </>
               )}
+              <button
+                onClick={() => setOverrideRow(row)}
+                className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+              >
+                Override
+              </button>
             </div>
           </div>
         ))}
@@ -215,6 +250,17 @@ export default function Today() {
           validFrom={projectorRow.code.validFrom}
           validUntil={projectorRow.code.validUntil}
           onClose={() => setProjectorRow(null)}
+        />
+      )}
+
+      {overrideRow && (
+        <OverrideModal
+          doctorId={overrideRow.doctor.id}
+          doctorName={overrideRow.doctor.name}
+          date={data.date}
+          currentStatus={overrideRow.attendance?.status}
+          onClose={() => setOverrideRow(null)}
+          onSaved={load}
         />
       )}
     </div>

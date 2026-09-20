@@ -10,6 +10,9 @@ import { scheduleImportRouter } from "./routes/scheduleImport.js";
 import { codesRouter } from "./routes/codes.js";
 import { publicCheckinRouter } from "./routes/publicCheckin.js";
 import { syncRouter } from "./routes/sync.js";
+import { attendanceRouter } from "./routes/attendance.js";
+import { reportsRouter } from "./routes/reports.js";
+import { auditLogRouter } from "./routes/auditLog.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { startRetrySyncJob } from "./jobs/retrySync.js";
 
@@ -45,6 +48,9 @@ app.use("/api/schedule-import", scheduleImportRouter);
 app.use("/api/codes", codesRouter);
 app.use("/api/public", publicCheckinRouter);
 app.use("/api/sync", syncRouter);
+app.use("/api/attendance", attendanceRouter);
+app.use("/api/reports", reportsRouter);
+app.use("/api/audit-log", auditLogRouter);
 
 app.use(errorHandler);
 

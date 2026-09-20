@@ -43,9 +43,9 @@ codesRouter.get("/today", async (req, res) => {
   const codes = await prisma.code.findMany({ where: { date: dateOnly } });
   const codeByDoctor = new Map(codes.map((c) => [c.doctorId, c]));
 
-  const attendanceCount = await prisma.attendance.count({
-    where: { date: dateOnly, status: { in: ["PRESENT", "LATE"] } },
-  });
+  const attendances = await prisma.attendance.findMany({ where: { date: dateOnly } });
+  const attendanceByDoctor = new Map(attendances.map((a) => [a.doctorId, a]));
+  const attendanceCount = attendances.filter((a) => a.status === "PRESENT" || a.status === "LATE").length;
 
   const doctors = [...doctorMap.values()].map((d) => ({
     doctor: { id: d.id, name: d.name },
@@ -58,6 +58,14 @@ codesRouter.get("/today", async (req, res) => {
       end: s.end,
     })),
     code: codeByDoctor.get(d.id) ?? null,
+    attendance: attendanceByDoctor.get(d.id)
+      ? {
+          id: attendanceByDoctor.get(d.id)!.id,
+          status: attendanceByDoctor.get(d.id)!.status,
+          checkInTime: attendanceByDoctor.get(d.id)!.checkInTime,
+          minutesLate: attendanceByDoctor.get(d.id)!.minutesLate,
+        }
+      : null,
   }));
 
   res.json({
