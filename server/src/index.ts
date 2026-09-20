@@ -13,8 +13,11 @@ import { syncRouter } from "./routes/sync.js";
 import { attendanceRouter } from "./routes/attendance.js";
 import { reportsRouter } from "./routes/reports.js";
 import { auditLogRouter } from "./routes/auditLog.js";
+import { jobsRouter } from "./routes/jobs.js";
+import { settingsRouter } from "./routes/settings.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { startRetrySyncJob } from "./jobs/retrySync.js";
+import { startMarkAbsentJob } from "./jobs/markAbsent.js";
 
 const app = express();
 
@@ -51,10 +54,13 @@ app.use("/api/sync", syncRouter);
 app.use("/api/attendance", attendanceRouter);
 app.use("/api/reports", reportsRouter);
 app.use("/api/audit-log", auditLogRouter);
+app.use("/api/jobs", jobsRouter);
+app.use("/api/settings", settingsRouter);
 
 app.use(errorHandler);
 
 startRetrySyncJob();
+startMarkAbsentJob();
 
 app.listen(env.PORT, () => {
   console.log(`Server listening on http://localhost:${env.PORT}`);
