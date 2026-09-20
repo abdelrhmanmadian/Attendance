@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { toCairoTimeStr } from "../lib/time.js";
 import { checkinSchema } from "../validators/checkin.js";
 import { performCheckin, CheckinError } from "../services/checkinService.js";
+import { attemptSyncAttendance } from "../services/syncService.js";
 import { isIpLockedOut, isIpRateLimited, isDoctorRateLimited, logAttempt } from "../lib/checkinRateLimit.js";
 
 export const publicCheckinRouter = Router();
@@ -52,6 +53,12 @@ publicCheckinRouter.post("/checkin", async (req, res) => {
   try {
     const { attendance, sessions } = await performCheckin(doctorId, code);
     await logAttempt({ ip, doctorName, codeTried: code, result: "SUCCESS" });
+
+    // Fire-and-forget: the doctor's confirmation never waits on, or fails
+    // because of, the Sheets push. A failure just leaves syncedToSheet=false
+    // for the background retry job to pick up.
+    attemptSyncAttendance(attendance.id).catch(() => {});
+
     res.json({
       doctorName: attendance.doctorName,
       checkInTime: attendance.checkInTime,

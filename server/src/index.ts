@@ -9,7 +9,9 @@ import { sessionsRouter } from "./routes/sessions.js";
 import { scheduleImportRouter } from "./routes/scheduleImport.js";
 import { codesRouter } from "./routes/codes.js";
 import { publicCheckinRouter } from "./routes/publicCheckin.js";
+import { syncRouter } from "./routes/sync.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { startRetrySyncJob } from "./jobs/retrySync.js";
 
 const app = express();
 
@@ -42,8 +44,11 @@ app.use("/api/sessions", sessionsRouter);
 app.use("/api/schedule-import", scheduleImportRouter);
 app.use("/api/codes", codesRouter);
 app.use("/api/public", publicCheckinRouter);
+app.use("/api/sync", syncRouter);
 
 app.use(errorHandler);
+
+startRetrySyncJob();
 
 app.listen(env.PORT, () => {
   console.log(`Server listening on http://localhost:${env.PORT}`);

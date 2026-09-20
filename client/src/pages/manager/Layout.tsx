@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
+import SyncWarningBanner from "../../components/SyncWarningBanner";
 
 const navItems = [
   { to: "/manager/today", label: "Today" },
@@ -40,8 +41,11 @@ export default function ManagerLayout() {
           </button>
         </div>
       </nav>
-      <main className="flex-1 p-4 md:p-8 min-w-0">
-        <Outlet />
+      <main className="flex-1 min-w-0 flex flex-col">
+        <SyncWarningBanner />
+        <div className="p-4 md:p-8">
+          <Outlet />
+        </div>
       </main>
     </div>
   );
