@@ -172,6 +172,46 @@ If you'd rather use a different host (Railway, Fly.io, a VPS, etc.), the same pi
 anywhere: a Postgres database, `NODE_ENV=production`, `npm run build` then `npm start`, and
 `CLIENT_ORIGIN` set to wherever the app is actually reachable.
 
+## Deploying to Bonto (no card required)
+
+[Bonto](https://bonto.dev) is a genuinely free option that doesn't ask for a card, unlike Render.
+The tradeoff: it's a newer, less established platform, free apps get 75 runtime-hours/month and
+sleep after 30 minutes idle, and it has no built-in database — so this pairs it with
+[Neon](https://neon.tech), a separate free (also no-card) PostgreSQL provider.
+
+This repo needs no Bonto-specific config file — it just needs a plain `npm install` followed by
+`npm start` to work, which is exactly what Bonto's Node.js detection runs. That flow is verified:
+`npm install` generates the Prisma client and builds both the server and client automatically (see
+the root `postinstall` script), and `npm start` runs pending database migrations before starting
+the server on whatever port Bonto assigns via `PORT`.
+
+1. **Create a Neon account** at [neon.tech](https://neon.tech) (no card) and a new project. Copy
+   the connection string it gives you — that's your `DATABASE_URL`.
+2. **Create a Bonto account** at [bonto.dev](https://bonto.dev) (no card) and connect this GitHub
+   repo (`abdelrhmanmadian/Attendance`, branch `claude/doctor-attendance-system-jieuhe` or wherever
+   you've merged this to). It should detect the root `package.json` and treat this as a Node.js app.
+3. **Set these environment variables** in Bonto's app settings:
+   - `NODE_ENV=production`
+   - `DATABASE_URL` — the Neon connection string from step 1
+   - `SESSION_SECRET` — generate one with `openssl rand -hex 32`
+   - `MANAGER1_EMAIL` / `MANAGER1_TEMP_PASSWORD` / `MANAGER2_EMAIL` / `MANAGER2_TEMP_PASSWORD` —
+     the two manager accounts you'll log in with
+   - `GOOGLE_SERVICE_ACCOUNT_EMAIL` / `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` / `GOOGLE_SHEET_ID` —
+     leave blank to skip Sheets sync
+   - Leave `CLIENT_ORIGIN` unset for now — you don't know the assigned URL yet
+4. **Deploy.** Bonto gives you a URL like `https://your-app-name.bonto.run`.
+5. **Set `CLIENT_ORIGIN`** to that exact URL in the app's environment variables and restart —
+   this is what makes the doctor check-in QR codes point to the real site instead of `localhost`.
+6. **Seed the manager accounts and sample data** once, from your own machine: temporarily put the
+   Neon `DATABASE_URL` (and your real manager passwords) into `server/.env`, run
+   `npm run prisma:seed`, then restore `server/.env` back to your local database URL.
+
+I haven't been able to test Bonto's actual dashboard end-to-end myself (no account, and I
+couldn't reach their docs site from this sandbox to double-check every UI detail) — I've verified
+that this repo's own install/build/start behavior is correct and matches what Bonto documents it
+does, but if something in their dashboard doesn't match what's described here, tell me exactly
+what you see and I'll adjust.
+
 ## Schedule import
 
 There are three ways to build the schedule:
