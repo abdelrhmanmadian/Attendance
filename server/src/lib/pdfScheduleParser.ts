@@ -52,6 +52,13 @@ function looksLikeCourseCode(line: string): boolean {
   return /^[A-Z]{2,6}\d{3,4}\b/.test(line);
 }
 
+// Instructor lines are usually "Dr. Name" but the PDF sometimes has no space
+// after the title ("Dr.Sara Nagy", "Dr.Wafaa Helmy(6695)") — still clearly an
+// instructor line, just missing whitespace, so don't require it.
+function looksLikeInstructorLine(line: string): boolean {
+  return /^(Dr\.|Eng\.|Prof\.)/i.test(line);
+}
+
 function classifyType(title: string, location: string): string {
   const haystack = `${title} ${location}`.toLowerCase();
   if (haystack.includes("lab")) return "Lab";
@@ -170,70 +177,106 @@ function parsePage(items: TextItem[], pageIndex: number, warnings: string[]): Pd
   }
 
   const patterns: PdfPatternRow[] = [];
+  const consumedKeys = new Set<string>();
 
-  for (const [key, cluster] of clusters) {
+  // Group by row so a cluster can look at its next-column neighbor in the
+  // same row (needed for the wide-cell instructor recovery below).
+  const byRow = new Map<number, number[]>();
+  for (const key of clusters.keys()) {
     const [rowIdxStr, colIdxStr] = key.split(":");
     const rowIdx = Number(rowIdxStr);
     const colIdx = Number(colIdxStr);
+    if (!byRow.has(rowIdx)) byRow.set(rowIdx, []);
+    byRow.get(rowIdx)!.push(colIdx);
+  }
+
+  for (const [rowIdx, colIdxs] of byRow) {
+    colIdxs.sort((a, b) => a - b);
     const dayOfWeek = dayLabelsAscendingY[rowIdx];
 
-    const lines = [...cluster.lines].sort((a, b) => b.y - a.y).map((l) => l.str);
-    if (lines.length < 2) {
-      warnings.push(`Page ${pageIndex} (${groupName}, ${dayOfWeek}): couldn't read a cell with too little text (${lines.join(" / ")}). Skipped.`);
-      continue;
-    }
+    for (const colIdx of colIdxs) {
+      const key = `${rowIdx}:${colIdx}`;
+      if (consumedKeys.has(key)) continue;
+      const cluster = clusters.get(key)!;
 
-    // A row-boundary line can occasionally land in the wrong cell (its y is
-    // a fraction of a point across the border into a neighboring row). When
-    // that happens here, it shows up as an implausible extra last line.
-    while (lines.length > 2 && looksLikeCourseCode(lines[lines.length - 1])) {
-      const dropped = lines.pop()!;
-      warnings.push(
-        `Page ${pageIndex} (${groupName}, ${dayOfWeek}): excluded "${dropped}" from this cell — it looks like it spilled over from a neighboring row/column. Check nearby cells if something's missing.`
-      );
-    }
-
-    let instructorLine: string | null = null;
-    let titleLines: string[];
-    const roomLine = lines[lines.length - 1];
-
-    if (/^(Dr\.|Eng\.|Prof\.)\s/i.test(lines[0])) {
-      instructorLine = lines[0];
-      let titleStart = 1;
-      // A long co-taught line (e.g. "Dr. X / Eng. Y") can wrap across two PDF
-      // lines, splitting right after the second title with the name still to
-      // come — merge it back before treating the rest as the course title.
-      if (/\/\s*(Dr|Eng|Prof)\.?$/i.test(instructorLine) && lines.length > 2) {
-        instructorLine = `${instructorLine} ${lines[1]}`;
-        titleStart = 2;
+      const lines = [...cluster.lines].sort((a, b) => b.y - a.y).map((l) => l.str);
+      if (lines.length < 2) {
+        warnings.push(`Page ${pageIndex} (${groupName}, ${dayOfWeek}): couldn't read a cell with too little text (${lines.join(" / ")}). Skipped.`);
+        continue;
       }
-      titleLines = lines.slice(titleStart, -1);
-    } else {
-      titleLines = lines.slice(0, -1);
-    }
 
-    if (titleLines.length === 0) {
-      warnings.push(`Page ${pageIndex} (${groupName}, ${dayOfWeek}): couldn't separate title/room in "${lines.join(" / ")}". Skipped.`);
-      continue;
-    }
-    if (!instructorLine) {
-      warnings.push(`Page ${pageIndex} (${groupName}, ${dayOfWeek}, "${titleLines.join(" ")}"): no instructor name detected. Skipped — add manually if needed.`);
-      continue;
-    }
+      // A row-boundary line can occasionally land in the wrong cell (its y is
+      // a fraction of a point across the border into a neighboring row). When
+      // that happens here, it shows up as an implausible extra last line.
+      while (lines.length > 2 && looksLikeCourseCode(lines[lines.length - 1])) {
+        const dropped = lines.pop()!;
+        warnings.push(
+          `Page ${pageIndex} (${groupName}, ${dayOfWeek}): excluded "${dropped}" from this cell — it looks like it spilled over from a neighboring row/column. Check nearby cells if something's missing.`
+        );
+      }
 
-    const title = titleLines.join(" ").replace(/\s+/g, " ").trim();
-    const location = roomLine.trim();
-    const startTime = slotTimes[colIdx]?.[0] ?? DEFAULT_SLOT_TIMES[colIdx][0];
-    const endTime = slotTimes[cluster.endColIndex]?.[1] ?? DEFAULT_SLOT_TIMES[cluster.endColIndex][1];
-    const type = classifyType(title, location);
+      let instructorLine: string | null = null;
+      let titleLines: string[];
+      const roomLine = lines[lines.length - 1];
 
-    const doctorNames = instructorLine
-      .split("/")
-      .map((s) => s.trim())
-      .filter(Boolean);
+      if (looksLikeInstructorLine(lines[0])) {
+        instructorLine = lines[0];
+        let titleStart = 1;
+        // A long co-taught line (e.g. "Dr. X / Eng. Y") can wrap across two PDF
+        // lines, splitting right after the second title with the name still to
+        // come — merge it back before treating the rest as the course title.
+        if (/\/\s*(Dr|Eng|Prof)\.?$/i.test(instructorLine) && lines.length > 2) {
+          instructorLine = `${instructorLine} ${lines[1]}`;
+          titleStart = 2;
+        }
+        titleLines = lines.slice(titleStart, -1);
+      } else {
+        titleLines = lines.slice(0, -1);
 
-    for (const doctorName of doctorNames) {
-      patterns.push({ dayOfWeek, type, title, groupName, startTime, endTime, location, doctorName });
+        // A very wide (often full-day) cell can position its instructor-name
+        // text far enough to the right that it lands in the next time-slot
+        // column as its own tiny cluster, instead of of ours. If that's what
+        // happened, borrow it back rather than dropping this whole session.
+        const neighborKey = `${rowIdx}:${colIdx + 1}`;
+        const neighbor = !consumedKeys.has(neighborKey) ? clusters.get(neighborKey) : undefined;
+        if (neighbor) {
+          const neighborLines = [...neighbor.lines].sort((a, b) => b.y - a.y).map((l) => l.str);
+          if (neighborLines.length > 0 && neighborLines.length <= 2 && looksLikeInstructorLine(neighborLines[0])) {
+            instructorLine = neighborLines[0];
+            if (/\/\s*(Dr|Eng|Prof)\.?$/i.test(instructorLine) && neighborLines.length > 1) {
+              instructorLine = `${instructorLine} ${neighborLines[1]}`;
+            }
+            consumedKeys.add(neighborKey);
+            warnings.push(
+              `Page ${pageIndex} (${groupName}, ${dayOfWeek}): recovered instructor "${instructorLine}" from an adjacent time-slot column — this cell looks unusually wide (e.g. a full-day session). Double check the time before confirming.`
+            );
+          }
+        }
+      }
+
+      if (titleLines.length === 0) {
+        warnings.push(`Page ${pageIndex} (${groupName}, ${dayOfWeek}): couldn't separate title/room in "${lines.join(" / ")}". Skipped.`);
+        continue;
+      }
+      if (!instructorLine) {
+        warnings.push(`Page ${pageIndex} (${groupName}, ${dayOfWeek}, "${titleLines.join(" ")}"): no instructor name detected. Skipped — add manually if needed.`);
+        continue;
+      }
+
+      const title = titleLines.join(" ").replace(/\s+/g, " ").trim();
+      const location = roomLine.trim();
+      const startTime = slotTimes[colIdx]?.[0] ?? DEFAULT_SLOT_TIMES[colIdx][0];
+      const endTime = slotTimes[cluster.endColIndex]?.[1] ?? DEFAULT_SLOT_TIMES[cluster.endColIndex][1];
+      const type = classifyType(title, location);
+
+      const doctorNames = instructorLine
+        .split("/")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      for (const doctorName of doctorNames) {
+        patterns.push({ dayOfWeek, type, title, groupName, startTime, endTime, location, doctorName });
+      }
     }
   }
 
