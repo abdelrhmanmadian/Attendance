@@ -1,46 +1,45 @@
+import { addDays } from "date-fns";
 import { prisma } from "../lib/prisma.js";
-import { cairoDateOnly } from "../lib/time.js";
+import { cairoDateOnly, toCairoDateStr } from "../lib/time.js";
 
-export interface AttendanceReportRow {
-  doctorId: string;
-  doctorName: string;
-  totalScheduledDays: number;
+export interface DailyAttendanceReportRow {
+  date: string;
   present: number;
-  late: number;
   absent: number;
+  totalScheduled: number;
   percentage: number;
 }
 
-export async function buildAttendanceReport(from: string, to: string, doctorId?: string): Promise<AttendanceReportRow[]> {
+/** One row per calendar date in [from, to]; days with nobody scheduled are skipped. */
+export async function buildDailyAttendanceReport(
+  from: string,
+  to: string,
+  doctorId?: string
+): Promise<DailyAttendanceReportRow[]> {
   const fromDate = cairoDateOnly(from);
   const toDate = cairoDateOnly(to);
+  const rows: DailyAttendanceReportRow[] = [];
 
-  const doctors = await prisma.doctor.findMany({
-    where: doctorId ? { id: doctorId } : {},
-    orderBy: { name: "asc" },
-  });
-
-  const rows: AttendanceReportRow[] = [];
-
-  for (const doctor of doctors) {
-    const scheduledDates = await prisma.session.findMany({
-      where: { doctorId: doctor.id, date: { gte: fromDate, lte: toDate } },
-      select: { date: true },
-      distinct: ["date"],
+  for (let date = fromDate; date <= toDate; date = addDays(date, 1)) {
+    const scheduledDoctors = await prisma.session.findMany({
+      where: { date, ...(doctorId ? { doctorId } : {}) },
+      select: { doctorId: true },
+      distinct: ["doctorId"],
     });
-    const totalScheduledDays = scheduledDates.length;
-    if (totalScheduledDays === 0) continue;
+    const totalScheduled = scheduledDoctors.length;
+    if (totalScheduled === 0) continue;
 
     const attendances = await prisma.attendance.findMany({
-      where: { doctorId: doctor.id, date: { gte: fromDate, lte: toDate } },
+      where: { date, ...(doctorId ? { doctorId } : {}) },
     });
-    const present = attendances.filter((a) => a.status === "PRESENT").length;
-    const late = attendances.filter((a) => a.status === "LATE").length;
+    // "Present" here means attended in any form (on time or late); the
+    // report is meant to answer "who showed up" at a glance, not to
+    // distinguish punctuality — that detail is still on the Today page.
+    const present = attendances.filter((a) => a.status === "PRESENT" || a.status === "LATE").length;
     const absent = attendances.filter((a) => a.status === "ABSENT").length;
-    const attendedDays = present + late;
-    const percentage = Math.round((attendedDays / totalScheduledDays) * 1000) / 10;
+    const percentage = Math.round((present / totalScheduled) * 1000) / 10;
 
-    rows.push({ doctorId: doctor.id, doctorName: doctor.name, totalScheduledDays, present, late, absent, percentage });
+    rows.push({ date: toCairoDateStr(date), present, absent, totalScheduled, percentage });
   }
 
   return rows;

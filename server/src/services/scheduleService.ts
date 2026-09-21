@@ -1,4 +1,3 @@
-import { addDays, differenceInCalendarDays } from "date-fns";
 import { prisma } from "../lib/prisma.js";
 import { cairoDateOnly, cairoWallTimeToUtc, toCairoDateStr, toCairoTimeStr } from "../lib/time.js";
 import { recordAudit } from "../lib/auditLog.js";
@@ -132,58 +131,4 @@ export async function deleteSession(id: string, overrideNote: string | undefined
   await recomputeWindowIfCodeExists(existing.doctorId, existing.date);
 
   return existing;
-}
-
-async function shiftSessions(fromDate: string, toDate: string, dayCount: number, managerId: string) {
-  const fromDateOnly = cairoDateOnly(fromDate);
-  const dayOffset = differenceInCalendarDays(cairoDateOnly(toDate), fromDateOnly);
-  const created = [];
-  const touched = new Map<string, { doctorId: string; date: Date }>();
-
-  for (let i = 0; i < dayCount; i++) {
-    const sourceDate = addDays(fromDateOnly, i);
-    const sessions = await prisma.session.findMany({ where: { date: sourceDate } });
-
-    for (const s of sessions) {
-      const newStart = addDays(s.start, dayOffset);
-      const newEnd = addDays(s.end, dayOffset);
-      const newDate = addDays(s.date, dayOffset);
-      const copy = await prisma.session.create({
-        data: {
-          date: newDate,
-          type: s.type,
-          title: s.title,
-          groupName: s.groupName,
-          start: newStart,
-          end: newEnd,
-          location: s.location,
-          doctorId: s.doctorId,
-        },
-      });
-      created.push(copy);
-      touched.set(`${copy.doctorId}:${newDate.getTime()}`, { doctorId: copy.doctorId, date: newDate });
-    }
-  }
-
-  for (const { doctorId, date } of touched.values()) {
-    await recomputeWindowIfCodeExists(doctorId, date);
-  }
-
-  await recordAudit({
-    managerId,
-    action: "DUPLICATE_SCHEDULE",
-    entity: `Schedule:${fromDate}->${toDate}`,
-    newValue: { count: created.length },
-    note: `Duplicated ${dayCount} day(s) starting ${fromDate} to starting ${toDate}`,
-  });
-
-  return created;
-}
-
-export async function duplicateDay(fromDate: string, toDate: string, managerId: string) {
-  return shiftSessions(fromDate, toDate, 1, managerId);
-}
-
-export async function duplicateWeek(fromDate: string, toDate: string, managerId: string) {
-  return shiftSessions(fromDate, toDate, 7, managerId);
 }

@@ -2,12 +2,10 @@ import { useState } from "react";
 import { api, ApiError } from "../../api/client";
 
 interface ReportRow {
-  doctorId: string;
-  doctorName: string;
-  totalScheduledDays: number;
+  date: string;
   present: number;
-  late: number;
   absent: number;
+  totalScheduled: number;
   percentage: number;
 }
 
@@ -81,28 +79,24 @@ export default function Reports() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
-                <th className="px-3 py-2">Doctor</th>
-                <th className="px-3 py-2">Scheduled Days</th>
+                <th className="px-3 py-2">Date</th>
                 <th className="px-3 py-2">Present</th>
-                <th className="px-3 py-2">Late</th>
                 <th className="px-3 py-2">Absent</th>
                 <th className="px-3 py-2">Attendance %</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => (
-                <tr key={r.doctorId}>
-                  <td className="px-3 py-2 font-medium">{r.doctorName}</td>
-                  <td className="px-3 py-2">{r.totalScheduledDays}</td>
+                <tr key={r.date}>
+                  <td className="px-3 py-2 font-medium">{r.date}</td>
                   <td className="px-3 py-2 text-green-700">{r.present}</td>
-                  <td className="px-3 py-2 text-amber-600">{r.late}</td>
                   <td className="px-3 py-2 text-red-600">{r.absent}</td>
                   <td className="px-3 py-2 font-semibold">{r.percentage}%</td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={4} className="px-3 py-6 text-center text-slate-400">
                     No scheduled sessions in this range.
                   </td>
                 </tr>

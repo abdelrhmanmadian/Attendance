@@ -23,6 +23,19 @@ interface SessionRow {
   doctor: Doctor;
 }
 
+interface MergedRow {
+  key: string;
+  ids: string[];
+  type: string;
+  title: string;
+  groups: string[];
+  start: string;
+  end: string;
+  location: string;
+  doctorName: string;
+  locked: boolean;
+}
+
 const emptyForm = {
   date: new Date().toISOString().slice(0, 10),
   type: "Lecture",
@@ -38,15 +51,45 @@ function toCairoHHMM(iso: string) {
   return new Date(iso).toLocaleTimeString("en-GB", { timeZone: "Africa/Cairo", hour: "2-digit", minute: "2-digit" });
 }
 
+// The same real-world class often appears as separate Session rows, one per
+// student group sharing it (that's how the source timetable encodes a
+// combined lecture). Merge those for display so the manager sees "1AR1,
+// 1AR2" once instead of the identical row twice.
+function mergeSessionsForDisplay(sessions: SessionRow[]): MergedRow[] {
+  const byKey = new Map<string, MergedRow>();
+  for (const s of sessions) {
+    const key = [s.doctorId, s.start, s.end, s.type, s.title, s.location].join("|");
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.ids.push(s.id);
+      if (s.groupName && !existing.groups.includes(s.groupName)) existing.groups.push(s.groupName);
+      existing.locked = existing.locked || s.locked;
+    } else {
+      byKey.set(key, {
+        key,
+        ids: [s.id],
+        type: s.type,
+        title: s.title,
+        groups: s.groupName ? [s.groupName] : [],
+        start: s.start,
+        end: s.end,
+        location: s.location,
+        doctorName: s.doctor.name,
+        locked: s.locked,
+      });
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.start.localeCompare(b.start));
+}
+
 export default function Schedule() {
   const [selectedDate, setSelectedDate] = useState(emptyForm.date);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingIds, setEditingIds] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [duplicateTarget, setDuplicateTarget] = useState(selectedDate);
   const [showImport, setShowImport] = useState(false);
   const [showPdfImport, setShowPdfImport] = useState(false);
 
@@ -63,40 +106,45 @@ export default function Schedule() {
 
   useEffect(() => {
     loadSessions();
-    setForm((f) => ({ ...f, date: selectedDate }));
-    setDuplicateTarget(selectedDate);
+    cancelEdit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
 
-  function startEdit(s: SessionRow) {
-    setEditingId(s.id);
+  function startEdit(row: MergedRow) {
+    const first = sessions.find((s) => s.id === row.ids[0])!;
+    setEditingIds(row.ids);
     setForm({
       date: selectedDate,
-      type: s.type,
-      title: s.title,
-      groupName: s.groupName ?? "",
-      startTime: toCairoHHMM(s.start),
-      endTime: toCairoHHMM(s.end),
-      location: s.location,
-      doctorId: s.doctorId,
+      type: row.type,
+      title: row.title,
+      groupName: row.groups.join(", "),
+      startTime: toCairoHHMM(row.start),
+      endTime: toCairoHHMM(row.end),
+      location: row.location,
+      doctorId: first.doctorId,
     });
   }
 
   function cancelEdit() {
-    setEditingId(null);
+    setEditingIds(null);
     setForm({ ...emptyForm, date: selectedDate });
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!editingIds) return;
     setError(null);
-    const payload = { ...form, groupName: form.groupName || undefined };
+    // A merged row can represent several underlying sessions (one per
+    // student group sharing the same class). Group name is the one field
+    // that legitimately differs between them, so only send it through when
+    // there's a single underlying session to avoid overwriting every
+    // group's distinct name with the joined display string.
+    const payload =
+      editingIds.length === 1
+        ? { ...form, groupName: form.groupName || undefined }
+        : { ...form, groupName: undefined };
     try {
-      if (editingId) {
-        await api.patch(`/sessions/${editingId}`, payload);
-      } else {
-        await api.post("/sessions", payload);
-      }
+      await Promise.all(editingIds.map((id) => api.patch(`/sessions/${id}`, payload)));
       cancelEdit();
       await loadSessions();
     } catch (err) {
@@ -106,7 +154,7 @@ export default function Schedule() {
         );
         if (note) {
           try {
-            await api.patch(`/sessions/${editingId}`, { ...payload, overrideNote: note });
+            await Promise.all(editingIds.map((id) => api.patch(`/sessions/${id}`, { ...payload, overrideNote: note })));
             cancelEdit();
             await loadSessions();
             return;
@@ -121,10 +169,11 @@ export default function Schedule() {
     }
   }
 
-  async function handleDelete(s: SessionRow) {
-    if (!window.confirm(`Delete "${s.title}" for ${s.doctor.name}?`)) return;
+  async function handleDelete(row: MergedRow) {
+    const label = row.groups.length > 1 ? `${row.title} (${row.groups.join(", ")})` : row.title;
+    if (!window.confirm(`Delete "${label}" for ${row.doctorName}?`)) return;
     try {
-      await api.delete(`/sessions/${s.id}`, {});
+      await Promise.all(row.ids.map((id) => api.delete(`/sessions/${id}`, {})));
       await loadSessions();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
@@ -132,7 +181,7 @@ export default function Schedule() {
           "This session already has attendance recorded. Enter a note to override and delete anyway:"
         );
         if (note) {
-          await api.delete(`/sessions/${s.id}`, { overrideNote: note });
+          await Promise.all(row.ids.map((id) => api.delete(`/sessions/${id}`, { overrideNote: note })));
           await loadSessions();
         }
         return;
@@ -141,19 +190,7 @@ export default function Schedule() {
     }
   }
 
-  async function handleDuplicate(mode: "day" | "week") {
-    try {
-      const result = await api.post<{ createdCount: number }>("/sessions/duplicate", {
-        mode,
-        fromDate: selectedDate,
-        toDate: duplicateTarget,
-      });
-      alert(`Created ${result.createdCount} session(s).`);
-      if (duplicateTarget === selectedDate) await loadSessions();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to duplicate schedule.");
-    }
-  }
+  const mergedRows = mergeSessionsForDisplay(sessions);
 
   return (
     <div>
@@ -193,101 +230,84 @@ export default function Schedule() {
         />
       )}
 
-      <div className="flex flex-wrap items-end gap-4 mb-6">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="rounded border border-slate-300 px-3 py-2"
-          />
-        </div>
-        <div className="flex items-end gap-2">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Duplicate to</label>
-            <input
-              type="date"
-              value={duplicateTarget}
-              onChange={(e) => setDuplicateTarget(e.target.value)}
-              className="rounded border border-slate-300 px-3 py-2"
-            />
-          </div>
-          <button onClick={() => handleDuplicate("day")} className="rounded border border-slate-300 px-3 py-2 text-sm">
-            Duplicate day
-          </button>
-          <button onClick={() => handleDuplicate("week")} className="rounded border border-slate-300 px-3 py-2 text-sm">
-            Duplicate week
-          </button>
-        </div>
+      <div className="mb-6">
+        <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
+        <input
+          type="date"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="rounded border border-slate-300 px-3 py-2"
+        />
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-lg p-4 mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <input
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          placeholder="Course title"
-          required
-          className="col-span-2 rounded border border-slate-300 px-3 py-2"
-        />
-        <input
-          value={form.type}
-          onChange={(e) => setForm({ ...form, type: e.target.value })}
-          placeholder="Type (Lecture/Tutorial/Lab...)"
-          required
-          className="rounded border border-slate-300 px-3 py-2"
-        />
-        <input
-          value={form.groupName}
-          onChange={(e) => setForm({ ...form, groupName: e.target.value })}
-          placeholder="Group (optional)"
-          className="rounded border border-slate-300 px-3 py-2"
-        />
-        <input
-          type="time"
-          value={form.startTime}
-          onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-          required
-          className="rounded border border-slate-300 px-3 py-2"
-        />
-        <input
-          type="time"
-          value={form.endTime}
-          onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-          required
-          className="rounded border border-slate-300 px-3 py-2"
-        />
-        <input
-          value={form.location}
-          onChange={(e) => setForm({ ...form, location: e.target.value })}
-          placeholder="Location"
-          required
-          className="rounded border border-slate-300 px-3 py-2"
-        />
-        <select
-          value={form.doctorId}
-          onChange={(e) => setForm({ ...form, doctorId: e.target.value })}
-          required
-          className="rounded border border-slate-300 px-3 py-2"
-        >
-          <option value="">Select doctor</option>
-          {doctors.filter((d) => d.active).map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-        <div className="col-span-2 sm:col-span-4 flex gap-2">
-          <button type="submit" className="bg-slate-800 text-white rounded px-4 py-2 font-medium">
-            {editingId ? "Save changes" : "Add session"}
-          </button>
-          {editingId && (
+      {editingIds && (
+        <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-lg p-4 mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <input
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            placeholder="Course title"
+            required
+            className="col-span-2 rounded border border-slate-300 px-3 py-2"
+          />
+          <input
+            value={form.type}
+            onChange={(e) => setForm({ ...form, type: e.target.value })}
+            placeholder="Type (Lecture/Tutorial/Lab...)"
+            required
+            className="rounded border border-slate-300 px-3 py-2"
+          />
+          <input
+            value={form.groupName}
+            onChange={(e) => setForm({ ...form, groupName: e.target.value })}
+            placeholder="Group (optional)"
+            disabled={(editingIds?.length ?? 0) > 1}
+            title={(editingIds?.length ?? 0) > 1 ? "This class covers multiple groups — edit each group's session individually to change its group name." : undefined}
+            className="rounded border border-slate-300 px-3 py-2 disabled:bg-slate-100 disabled:text-slate-400"
+          />
+          <input
+            type="time"
+            value={form.startTime}
+            onChange={(e) => setForm({ ...form, startTime: e.target.value })}
+            required
+            className="rounded border border-slate-300 px-3 py-2"
+          />
+          <input
+            type="time"
+            value={form.endTime}
+            onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+            required
+            className="rounded border border-slate-300 px-3 py-2"
+          />
+          <input
+            value={form.location}
+            onChange={(e) => setForm({ ...form, location: e.target.value })}
+            placeholder="Location"
+            required
+            className="rounded border border-slate-300 px-3 py-2"
+          />
+          <select
+            value={form.doctorId}
+            onChange={(e) => setForm({ ...form, doctorId: e.target.value })}
+            required
+            className="rounded border border-slate-300 px-3 py-2"
+          >
+            <option value="">Select doctor</option>
+            {doctors.filter((d) => d.active).map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+          <div className="col-span-2 sm:col-span-4 flex gap-2">
+            <button type="submit" className="bg-slate-800 text-white rounded px-4 py-2 font-medium">
+              Save changes
+            </button>
             <button type="button" onClick={cancelEdit} className="rounded border border-slate-300 px-4 py-2">
               Cancel
             </button>
-          )}
-        </div>
-      </form>
+          </div>
+        </form>
+      )}
       {error && <div className="mb-4 text-sm text-red-600 bg-red-50 rounded p-2">{error}</div>}
 
       {loading ? (
@@ -307,30 +327,30 @@ export default function Schedule() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sessions.map((s) => (
-                <tr key={s.id}>
+              {mergedRows.map((row) => (
+                <tr key={row.key}>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    {toCairoHHMM(s.start)}–{toCairoHHMM(s.end)}
+                    {toCairoHHMM(row.start)}–{toCairoHHMM(row.end)}
                   </td>
-                  <td className="px-3 py-2">{s.type}</td>
+                  <td className="px-3 py-2">{row.type}</td>
                   <td className="px-3 py-2">
-                    {s.title}
-                    {s.locked && <span className="ml-2 text-xs text-amber-600 font-medium">locked</span>}
+                    {row.title}
+                    {row.locked && <span className="ml-2 text-xs text-amber-600 font-medium">locked</span>}
                   </td>
-                  <td className="px-3 py-2">{s.groupName ?? "—"}</td>
-                  <td className="px-3 py-2">{s.location}</td>
-                  <td className="px-3 py-2">{s.doctor.name}</td>
+                  <td className="px-3 py-2">{row.groups.length > 0 ? row.groups.join(", ") : "—"}</td>
+                  <td className="px-3 py-2">{row.location}</td>
+                  <td className="px-3 py-2">{row.doctorName}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <button onClick={() => startEdit(s)} className="text-slate-600 hover:underline mr-3">
+                    <button onClick={() => startEdit(row)} className="text-slate-600 hover:underline mr-3">
                       Edit
                     </button>
-                    <button onClick={() => handleDelete(s)} className="text-red-600 hover:underline">
+                    <button onClick={() => handleDelete(row)} className="text-red-600 hover:underline">
                       Delete
                     </button>
                   </td>
                 </tr>
               ))}
-              {sessions.length === 0 && (
+              {mergedRows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-3 py-6 text-center text-slate-400">
                     No sessions scheduled for this date.

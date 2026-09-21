@@ -5,11 +5,10 @@ import {
   createSessionSchema,
   updateSessionSchema,
   deleteSessionSchema,
-  duplicateScheduleSchema,
   listSessionsQuerySchema,
 } from "../validators/session.js";
 import { cairoDateOnly } from "../lib/time.js";
-import { createSession, updateSession, deleteSession, duplicateDay, duplicateWeek, LockedSessionError } from "../services/scheduleService.js";
+import { createSession, updateSession, deleteSession, LockedSessionError } from "../services/scheduleService.js";
 import { recordAudit } from "../lib/auditLog.js";
 
 export const sessionsRouter = Router();
@@ -90,17 +89,4 @@ sessionsRouter.delete("/:id", async (req, res) => {
     }
     throw err;
   }
-});
-
-sessionsRouter.post("/duplicate", async (req, res) => {
-  const parsed = duplicateScheduleSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: "INVALID_INPUT", message: parsed.error.issues[0]?.message });
-  }
-  const { mode, fromDate, toDate } = parsed.data;
-  const created =
-    mode === "day"
-      ? await duplicateDay(fromDate, toDate, req.session.managerId!)
-      : await duplicateWeek(fromDate, toDate, req.session.managerId!);
-  res.status(201).json({ createdCount: created.length });
 });

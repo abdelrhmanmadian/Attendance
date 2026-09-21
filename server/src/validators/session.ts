@@ -40,17 +40,6 @@ export const deleteSessionSchema = z.object({
   overrideNote: z.string().trim().min(1).optional(),
 });
 
-export const duplicateScheduleSchema = z
-  .object({
-    mode: z.enum(["day", "week"]),
-    fromDate: dateStr,
-    toDate: dateStr,
-  })
-  .refine((data) => data.fromDate !== data.toDate, {
-    message: "toDate must differ from fromDate",
-    path: ["toDate"],
-  });
-
 export const listSessionsQuerySchema = z.object({
   date: dateStr.optional(),
   from: dateStr.optional(),
