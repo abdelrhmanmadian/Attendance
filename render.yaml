@@ -1,0 +1,53 @@
+databases:
+  - name: attendance-db
+    plan: free
+    databaseName: attendance
+    user: attendance
+
+services:
+  - type: web
+    name: doctor-attendance
+    runtime: node
+    plan: free
+    # --include=dev is required here: Render sets NODE_ENV=production for
+    # the build too, which would otherwise make npm skip the devDependencies
+    # (typescript, vite, tsx) that the build itself needs.
+    buildCommand: >-
+      npm install --include=dev &&
+      npx prisma generate --schema server/prisma/schema.prisma &&
+      npm run build &&
+      npx prisma migrate deploy --schema server/prisma/schema.prisma
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: attendance-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      # CLIENT_ORIGIN must be the public URL Render assigns this service
+      # (e.g. https://doctor-attendance.onrender.com) — used to build the
+      # QR-code check-in link. Render only knows this URL after the first
+      # deploy, so set it once in the dashboard afterwards (see README).
+      - key: CLIENT_ORIGIN
+        sync: false
+      # Only used by `npm run prisma:seed` — set these once, run the seed
+      # job (see README), then they can be removed.
+      - key: MANAGER1_EMAIL
+        sync: false
+      - key: MANAGER1_TEMP_PASSWORD
+        sync: false
+      - key: MANAGER2_EMAIL
+        sync: false
+      - key: MANAGER2_TEMP_PASSWORD
+        sync: false
+      # Optional — leave unset to run without Google Sheets sync.
+      - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+        sync: false
+      - key: GOOGLE_SHEET_ID
+        sync: false

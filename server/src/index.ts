@@ -1,7 +1,10 @@
 import "express-async-errors";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import { env } from "./env.js";
 import { authRouter } from "./routes/auth.js";
 import { doctorsRouter } from "./routes/doctors.js";
@@ -21,6 +24,13 @@ import { startMarkAbsentJob } from "./jobs/markAbsent.js";
 
 const app = express();
 
+// Render (and most PaaS hosts) put the app behind a reverse proxy that
+// terminates HTTPS; without this, Express sees plain HTTP and the
+// `cookie.secure` check below would silently drop the session cookie.
+if (env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 app.use(
   cors({
     origin: env.CLIENT_ORIGIN,
@@ -34,6 +44,16 @@ app.use(
     secret: env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    // The default in-memory store leaks memory and forgets every session on
+    // restart — fine for local dev, not for a public deploy that can redeploy
+    // or spin down at any time. Reuse the same Postgres database for it there.
+    store:
+      env.NODE_ENV === "production"
+        ? new (connectPgSimple(session))({
+            conString: env.DATABASE_URL,
+            createTableIfMissing: true,
+          })
+        : undefined,
     cookie: {
       httpOnly: true,
       secure: env.NODE_ENV === "production",
@@ -56,6 +76,18 @@ app.use("/api/reports", reportsRouter);
 app.use("/api/audit-log", auditLogRouter);
 app.use("/api/jobs", jobsRouter);
 app.use("/api/settings", settingsRouter);
+
+// In production this one service also serves the built client (same origin,
+// so no CORS/cookie cross-site headaches) — in dev the client runs on its
+// own Vite server instead and proxies /api here.
+if (env.NODE_ENV === "production") {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const clientDist = path.resolve(here, "../../client/dist");
+  app.use(express.static(clientDist));
+  app.get(/^(?!\/api).*/, (_req, res) => {
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+}
 
 app.use(errorHandler);
 

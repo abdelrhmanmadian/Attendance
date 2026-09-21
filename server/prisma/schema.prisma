@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -68,8 +68,9 @@ model Code {
   @@index([date])
 }
 
-// SQLite has no native enum support in Prisma; validated in app code via
-// the AttendanceStatus union in src/lib/attendanceStatus.ts instead.
+// Plain string rather than a Prisma enum, validated in app code via the
+// AttendanceStatus union in src/lib/attendanceStatus.ts instead — keeps
+// status handling in one place alongside the Present/Late/Absent logic.
 model Attendance {
   id                String    @id @default(cuid())
   doctorId          String

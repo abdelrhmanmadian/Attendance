@@ -7,13 +7,24 @@ attendance is recorded and pushed to a Google Sheet.
 
 ## Stack
 
-- **Server**: Node.js + Express + TypeScript, SQLite via Prisma
+- **Server**: Node.js + Express + TypeScript, PostgreSQL via Prisma
 - **Client**: React + Vite + Tailwind (mobile-first)
 - **Sheets sync**: googleapis (Sheets API v4) with a service account
 - **Jobs**: node-cron (Sheets retry every 5 min, end-of-day absent job at 23:59 Cairo time)
 - **Timezone**: all timestamps stored in UTC, computed and displayed in `Africa/Cairo` time throughout
 
 ## Setup
+
+You need a PostgreSQL database for local development. The easiest way is the provided
+docker-compose file (requires [Docker](https://docs.docker.com/get-docker/)):
+
+```bash
+docker compose up -d
+```
+
+This starts Postgres on `localhost:5432` and creates both the dev database (`attendance`) and
+the test database (`attendance_test`) the first time it runs. If you'd rather use an existing
+Postgres install, just point `DATABASE_URL` (below) at it instead — nothing else needs Docker.
 
 ```bash
 npm install
@@ -61,11 +72,12 @@ one week of sample lectures/tutorials so there's data to explore immediately.
 npm test
 ```
 
-Tests run against a separate SQLite database (`server/test.db`, gitignored), migrated fresh
-on every run — they never touch your dev database. Covers the 4 check-in validation failure
-cases in order, the Present/Late boundary calculation, and validity-window recomputation
-after schedule edits (add a session, edit a session's time, delete a session, and confirm a
-revoked code is left alone).
+Tests run against a separate `attendance_test` Postgres database (created automatically by
+`docker compose up -d`, or create it yourself with `createdb attendance_test` if not using
+Docker), reset fresh on every run — they never touch your dev database. Covers the 4 check-in
+validation failure cases in order, the Present/Late boundary calculation, and validity-window
+recomputation after schedule edits (add a session, edit a session's time, delete a session, and
+confirm a revoked code is left alone).
 
 ## Environment variables
 
@@ -73,7 +85,10 @@ See `.env.example` for the full list with inline comments. The important ones:
 
 - `SESSION_SECRET` — long random string signing the manager session cookie. Generate one with
   `openssl rand -hex 32`.
-- `DATABASE_URL` — SQLite file path, defaults to `file:./dev.db` (relative to `server/`).
+- `DATABASE_URL` — PostgreSQL connection string, e.g.
+  `postgresql://attendance:attendance@localhost:5432/attendance` (matches `docker-compose.yml`).
+- `CLIENT_ORIGIN` — the public URL doctors' check-in QR codes should point to. Only matters in
+  production (see [Deploying to Render](#deploying-to-render)); the default is fine for local dev.
 - `MANAGER1_EMAIL` / `MANAGER1_TEMP_PASSWORD` / `MANAGER2_EMAIL` / `MANAGER2_TEMP_PASSWORD` —
   only used by the seed script.
 - `GOOGLE_SERVICE_ACCOUNT_EMAIL` / `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` / `GOOGLE_SHEET_ID` —
@@ -113,6 +128,49 @@ Sync is one-way (app → Sheet) and DB-first: the database write always happens,
 check-in confirmation never waits on or fails because of the Sheets push. If a push fails, the
 row stays marked unsynced and a background job retries every 5 minutes; the manager dashboard
 also shows a warning banner with a "Retry sync now" button whenever there's a backlog.
+
+## Deploying to Render
+
+The app is set up to run as a single [Render](https://render.com) web service that serves both
+the API and the built React frontend from one URL, backed by Render's free managed PostgreSQL —
+no separate frontend host or persistent-disk plan needed.
+
+1. **Push this repo to GitHub** (if it isn't already).
+2. **In the Render dashboard**, click **New → Blueprint**, connect the repo, and Render will
+   read `render.yaml` at the repo root automatically. It provisions:
+   - a free PostgreSQL database (`attendance-db`)
+   - a free web service (`doctor-attendance`) that builds the client + server, runs
+     `prisma migrate deploy` against that database, and starts the server
+3. **Fill in the environment variables** Render prompts for (marked `sync: false` in
+   `render.yaml`, so it asks rather than guessing):
+   - `MANAGER1_EMAIL` / `MANAGER1_TEMP_PASSWORD` / `MANAGER2_EMAIL` / `MANAGER2_TEMP_PASSWORD` —
+     the two manager accounts you'll actually log in with.
+   - `GOOGLE_SERVICE_ACCOUNT_EMAIL` / `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` / `GOOGLE_SHEET_ID` —
+     leave blank to skip Sheets sync (see above).
+   - Leave `CLIENT_ORIGIN` blank for now — Render doesn't know the service's URL until after
+     the first deploy.
+4. **Deploy.** Render gives you a URL like `https://doctor-attendance.onrender.com` — that's
+   your public site. Open `/` for the check-in page or `/login` for the manager dashboard.
+5. **Set `CLIENT_ORIGIN`** to that exact URL in the service's Environment tab and save (Render
+   restarts the service automatically). This is what makes the QR codes on the Today page point
+   doctors' phones at the right place instead of `localhost`.
+6. **Seed the manager accounts and sample data** once, from your own machine, by pointing at the
+   live database — copy the `DATABASE_URL` Render generated (Environment tab → `attendance-db` →
+   Connect → External Connection String) into `server/.env` temporarily, then run
+   `npm run prisma:seed`. Put your real `MANAGER1_TEMP_PASSWORD` / `MANAGER2_TEMP_PASSWORD` in
+   there too — those are the passwords you'll actually log in with. Restore `server/.env` back
+   to your local database URL afterwards.
+
+A few things worth knowing about the free tier: the web service spins down after 15 minutes of
+no traffic and takes ~30-60 seconds to wake back up on the next request (fine for occasional
+use by two managers and doctors checking in a few times a day; not fine if you need instant
+responses around the clock — upgrade to a paid instance to remove the spin-down). The free
+Postgres database is retained but Render deletes free databases that go unused for 90 days, so
+don't leave it completely idle for months at a time.
+
+If you'd rather use a different host (Railway, Fly.io, a VPS, etc.), the same pieces apply
+anywhere: a Postgres database, `NODE_ENV=production`, `npm run build` then `npm start`, and
+`CLIENT_ORIGIN` set to wherever the app is actually reachable.
 
 ## Schedule import
 
