@@ -3,10 +3,8 @@ import { api, ApiError } from "../../api/client";
 
 interface ReportRow {
   date: string;
-  present: number;
-  absent: number;
-  totalScheduled: number;
-  percentage: number;
+  attended: string[];
+  absent: string[];
 }
 
 function defaultRange() {
@@ -79,24 +77,22 @@ export default function Reports() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
-                <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Present</th>
+                <th className="px-3 py-2 whitespace-nowrap">Date</th>
+                <th className="px-3 py-2">Attended</th>
                 <th className="px-3 py-2">Absent</th>
-                <th className="px-3 py-2">Attendance %</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rows.map((r) => (
                 <tr key={r.date}>
-                  <td className="px-3 py-2 font-medium">{r.date}</td>
-                  <td className="px-3 py-2 text-green-700">{r.present}</td>
-                  <td className="px-3 py-2 text-red-600">{r.absent}</td>
-                  <td className="px-3 py-2 font-semibold">{r.percentage}%</td>
+                  <td className="px-3 py-2 font-medium align-top whitespace-nowrap">{r.date}</td>
+                  <td className="px-3 py-2 text-green-700">{r.attended.length > 0 ? r.attended.join(", ") : "—"}</td>
+                  <td className="px-3 py-2 text-red-600">{r.absent.length > 0 ? r.absent.join(", ") : "—"}</td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={3} className="px-3 py-6 text-center text-slate-400">
                     No scheduled sessions in this range.
                   </td>
                 </tr>

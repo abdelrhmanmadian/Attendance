@@ -166,8 +166,9 @@ the Settings/Today area via `POST /api/jobs/mark-absent`.
 - **Schedule** — view/edit-existing list per day, Excel/PDF import.
 - **Doctors** — add, rename, deactivate/reactivate. Deactivated doctors disappear from the
   check-in dropdown and new scheduling but keep all history; nothing is ever hard-deleted.
-- **Reports** — date-range attendance summary, one row per date (present / absent / attendance %
-  across everyone scheduled that day), exportable to Excel.
+- **Reports** — date-range attendance summary, one row per date listing the doctors who attended
+  and the doctors who were absent by name (days with nobody scheduled are skipped), exportable to
+  Excel.
 - **Audit Log** — searchable record of every manual override, reset, and locked-session edit.
 - **Settings** — code length, validity-window offsets, grace period.
 

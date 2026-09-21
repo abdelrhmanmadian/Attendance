@@ -4,10 +4,8 @@ import { cairoDateOnly, toCairoDateStr } from "../lib/time.js";
 
 export interface DailyAttendanceReportRow {
   date: string;
-  present: number;
-  absent: number;
-  totalScheduled: number;
-  percentage: number;
+  attended: string[]; // doctor names who checked in (present or late)
+  absent: string[]; // scheduled doctors with no present/late record that day
 }
 
 /** One row per calendar date in [from, to]; days with nobody scheduled are skipped. */
@@ -21,25 +19,33 @@ export async function buildDailyAttendanceReport(
   const rows: DailyAttendanceReportRow[] = [];
 
   for (let date = fromDate; date <= toDate; date = addDays(date, 1)) {
-    const scheduledDoctors = await prisma.session.findMany({
+    const scheduled = await prisma.session.findMany({
       where: { date, ...(doctorId ? { doctorId } : {}) },
       select: { doctorId: true },
       distinct: ["doctorId"],
     });
-    const totalScheduled = scheduledDoctors.length;
-    if (totalScheduled === 0) continue;
+    if (scheduled.length === 0) continue;
+    const scheduledIds = scheduled.map((s) => s.doctorId);
+
+    const doctors = await prisma.doctor.findMany({
+      where: { id: { in: scheduledIds } },
+      select: { id: true, name: true },
+    });
+    const nameById = new Map(doctors.map((d) => [d.id, d.name]));
 
     const attendances = await prisma.attendance.findMany({
-      where: { date, ...(doctorId ? { doctorId } : {}) },
+      where: { date, doctorId: { in: scheduledIds }, status: { in: ["PRESENT", "LATE"] } },
+      select: { doctorId: true },
     });
-    // "Present" here means attended in any form (on time or late); the
-    // report is meant to answer "who showed up" at a glance, not to
-    // distinguish punctuality — that detail is still on the Today page.
-    const present = attendances.filter((a) => a.status === "PRESENT" || a.status === "LATE").length;
-    const absent = attendances.filter((a) => a.status === "ABSENT").length;
-    const percentage = Math.round((present / totalScheduled) * 1000) / 10;
+    const attendedIds = new Set(attendances.map((a) => a.doctorId));
 
-    rows.push({ date: toCairoDateStr(date), present, absent, totalScheduled, percentage });
+    const attended = [...attendedIds].map((id) => nameById.get(id) ?? "Unknown").sort();
+    const absent = scheduledIds
+      .filter((id) => !attendedIds.has(id))
+      .map((id) => nameById.get(id) ?? "Unknown")
+      .sort();
+
+    rows.push({ date: toCairoDateStr(date), attended, absent });
   }
 
   return rows;

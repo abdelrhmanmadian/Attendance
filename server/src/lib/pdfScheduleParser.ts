@@ -43,6 +43,15 @@ function to24h(timeLabel: string): string {
   return `${h.padStart(2, "0")}:${m}`;
 }
 
+// Course codes in this document are always LETTERS immediately followed by
+// digits with no space (e.g. "EBA1103", "UNR1403"); room strings never look
+// like this ("A 218 D", "B1 023", "online", "A 111 - PC"). A cluster whose
+// presumed last line ("the room") actually matches this pattern is a strong
+// signal that a stray line from a neighboring cell got merged in.
+function looksLikeCourseCode(line: string): boolean {
+  return /^[A-Z]{2,6}\d{3,4}\b/.test(line);
+}
+
 function classifyType(title: string, location: string): string {
   const haystack = `${title} ${location}`.toLowerCase();
   if (haystack.includes("lab")) return "Lab";
@@ -172,6 +181,16 @@ function parsePage(items: TextItem[], pageIndex: number, warnings: string[]): Pd
     if (lines.length < 2) {
       warnings.push(`Page ${pageIndex} (${groupName}, ${dayOfWeek}): couldn't read a cell with too little text (${lines.join(" / ")}). Skipped.`);
       continue;
+    }
+
+    // A row-boundary line can occasionally land in the wrong cell (its y is
+    // a fraction of a point across the border into a neighboring row). When
+    // that happens here, it shows up as an implausible extra last line.
+    while (lines.length > 2 && looksLikeCourseCode(lines[lines.length - 1])) {
+      const dropped = lines.pop()!;
+      warnings.push(
+        `Page ${pageIndex} (${groupName}, ${dayOfWeek}): excluded "${dropped}" from this cell — it looks like it spilled over from a neighboring row/column. Check nearby cells if something's missing.`
+      );
     }
 
     let instructorLine: string | null = null;
