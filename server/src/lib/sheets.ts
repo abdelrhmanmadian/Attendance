@@ -135,6 +135,23 @@ async function findRowIndex(sheets: sheets_v4.Sheets, tabName: string, dateStr: 
 }
 
 /**
+ * Reads raw cell values from an arbitrary spreadsheet the service account
+ * has at least Viewer access to (unlike the rest of this file, which only
+ * ever touches the one configured GOOGLE_SHEET_ID). Values come back
+ * unformatted — numbers for anything Sheets auto-detected as a date/time,
+ * exactly like Excel's serial dates — so the caller decides how to read them.
+ */
+export async function readSheetValues(spreadsheetId: string, range: string): Promise<unknown[][]> {
+  const sheets = getClient();
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range,
+    valueRenderOption: "UNFORMATTED_VALUE",
+  });
+  return res.data.values ?? [];
+}
+
+/**
  * Writes (or updates) one attendance row. Throws on failure; caller decides
  * how to record that. Returns false without attempting anything if Sheets
  * isn't configured — distinct from success, so callers never mark a row

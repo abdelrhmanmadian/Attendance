@@ -174,7 +174,7 @@ anywhere: a Postgres database, `NODE_ENV=production`, `npm run build` then `npm 
 
 ## Schedule import
 
-There are two ways to build the schedule:
+There are three ways to build the schedule:
 
 1. **Excel import** — Schedule page → "Change Schedule (Excel)" → download the template,
    fill it in, upload it. Every row is validated before anything is saved (see format below);
@@ -191,6 +191,15 @@ There are two ways to build the schedule:
    editable inline and rows can be removed — before you pick a semester date range and confirm.
    Each weekly row then repeats on its weekday for every week in that range, feeding into the
    same replace-future-schedule commit as the Excel path.
+3. **Google Sheet import** — Schedule page → "Import from Google Sheet". Paste a link (or bare
+   ID) to a sheet using the same 8 columns as the Excel template, plus an optional tab name if
+   it's not the first/only one. Requires `GOOGLE_SERVICE_ACCOUNT_EMAIL` /
+   `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` to be set (see [Google Sheets setup](#google-sheets-setup)
+   above — `GOOGLE_SHEET_ID` itself isn't needed for this, that's only the attendance-output
+   sheet) and the sheet to be shared with that service account email (Viewer access is enough).
+   Goes through the same validated preview and replace-future-schedule commit as the other two —
+   this is just a different way to get rows in, not a different import behavior. There's no
+   polling or auto-sync: re-fetch by re-opening the dialog whenever the sheet changes.
 
 The Schedule page itself is view/edit-existing only (click "Edit" on a row to correct it, with
 a required note if it's already locked) — there's no manual "add a session from scratch" form,
@@ -221,7 +230,7 @@ the Settings/Today area via `POST /api/jobs/mark-absent`.
 - **Today** — every doctor scheduled today, their sessions, their code (generate / regenerate /
   revoke / display large-and-projector-friendly with a QR code), and their current attendance
   status with an Override action.
-- **Schedule** — view/edit-existing list per day, Excel/PDF import.
+- **Schedule** — view/edit-existing list per day, Excel/PDF/Google Sheet import.
 - **Doctors** — add, rename, deactivate/reactivate. Deactivated doctors disappear from the
   check-in dropdown and new scheduling but keep all history; nothing is ever hard-deleted.
 - **Reports** — date-range attendance summary, one row per date listing the doctors who attended

@@ -24,3 +24,8 @@ export type ImportRow = z.infer<typeof importRowSchema>;
 export const commitImportSchema = z.object({
   rows: z.array(importRowSchema).min(1, "At least one row is required"),
 });
+
+export const sheetImportRequestSchema = z.object({
+  url: z.string().trim().min(1, "Paste a Google Sheet link or ID"),
+  sheetName: z.string().trim().optional(),
+});

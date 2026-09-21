@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, ApiError } from "../../api/client";
 import ScheduleImportModal from "../../components/ScheduleImportModal";
 import PdfScheduleImportModal from "../../components/PdfScheduleImportModal";
+import GoogleSheetImportModal from "../../components/GoogleSheetImportModal";
 
 interface Doctor {
   id: string;
@@ -92,6 +93,7 @@ export default function Schedule() {
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
   const [showPdfImport, setShowPdfImport] = useState(false);
+  const [showSheetImport, setShowSheetImport] = useState(false);
 
   async function loadSessions() {
     setLoading(true);
@@ -209,6 +211,12 @@ export default function Schedule() {
           >
             Import from PDF
           </button>
+          <button
+            onClick={() => setShowSheetImport(true)}
+            className="rounded border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
+          >
+            Import from Google Sheet
+          </button>
         </div>
       </div>
 
@@ -224,6 +232,15 @@ export default function Schedule() {
       {showPdfImport && (
         <PdfScheduleImportModal
           onClose={() => setShowPdfImport(false)}
+          onImported={() => {
+            loadSessions();
+          }}
+        />
+      )}
+
+      {showSheetImport && (
+        <GoogleSheetImportModal
+          onClose={() => setShowSheetImport(false)}
           onImported={() => {
             loadSessions();
           }}

@@ -18,7 +18,10 @@ const envSchema = z.object({
 
 export const env = envSchema.parse(process.env);
 
-export const sheetsConfigured =
-  env.GOOGLE_SERVICE_ACCOUNT_EMAIL.length > 0 &&
-  env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.length > 0 &&
-  env.GOOGLE_SHEET_ID.length > 0;
+// Just the service-account credentials — enough to read/write any sheet the
+// account has been shared access to, regardless of GOOGLE_SHEET_ID (which is
+// specifically the attendance-output spreadsheet, not a schedule source).
+export const googleCredentialsConfigured =
+  env.GOOGLE_SERVICE_ACCOUNT_EMAIL.length > 0 && env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.length > 0;
+
+export const sheetsConfigured = googleCredentialsConfigured && env.GOOGLE_SHEET_ID.length > 0;

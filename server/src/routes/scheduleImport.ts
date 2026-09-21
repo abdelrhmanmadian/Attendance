@@ -3,7 +3,8 @@ import multer from "multer";
 import { requireManager } from "../middleware/auth.js";
 import { buildTemplateWorkbook, parseScheduleWorkbook } from "../lib/scheduleExcel.js";
 import { parsePdfSchedule } from "../lib/pdfScheduleParser.js";
-import { commitImportSchema } from "../validators/scheduleImport.js";
+import { parseScheduleFromGoogleSheet } from "../lib/scheduleSheet.js";
+import { commitImportSchema, sheetImportRequestSchema } from "../validators/scheduleImport.js";
 import { commitPdfImportSchema } from "../validators/pdfImport.js";
 import { commitScheduleImport } from "../services/scheduleImportService.js";
 import { expandPatternsToRows } from "../services/pdfScheduleService.js";
@@ -59,6 +60,20 @@ scheduleImportRouter.post("/preview", (req, res, next) => {
     return res.status(400).json({ error: "NO_FILE", message: "No file uploaded." });
   }
   const { rows, errors } = await parseScheduleWorkbook(req.file.buffer);
+  res.json({
+    valid: errors.length === 0,
+    rowCount: rows.length,
+    rows: errors.length === 0 ? rows : [],
+    errors,
+  });
+});
+
+scheduleImportRouter.post("/sheets/preview", async (req, res) => {
+  const parsed = sheetImportRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "INVALID_INPUT", message: parsed.error.issues[0]?.message });
+  }
+  const { rows, errors } = await parseScheduleFromGoogleSheet(parsed.data.url, parsed.data.sheetName);
   res.json({
     valid: errors.length === 0,
     rowCount: rows.length,
