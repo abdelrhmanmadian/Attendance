@@ -1,6 +1,7 @@
 {
   "name": "doctor-attendance-system",
   "private": true,
+  "type": "module",
   "workspaces": [
     "server",
     "client"
