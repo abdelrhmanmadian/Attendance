@@ -1,6 +1,7 @@
 {
   "outputDirectory": "client/dist",
   "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/[...slug]" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [{ "path": "/api/cron/mark-absent", "schedule": "0 22 * * *" }]
