@@ -1,4 +1,10 @@
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+// pdfjs-dist's Node ("fake worker") path loads this via a fully dynamic
+// import(this.workerSrc) at runtime (see PDFWorker._setupFakeWorkerGlobal
+// upstream), which Vercel's build-time file tracer can't follow, so the
+// file silently gets dropped from the deployed function bundle. A plain
+// static import here is enough to make the tracer include it.
+import "pdfjs-dist/legacy/build/pdf.worker.mjs";
 
 const DAY_LABELS = ["Sa", "Su", "Mo", "Tu", "We", "Th"] as const;
 export type DayLabel = (typeof DAY_LABELS)[number];
