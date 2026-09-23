@@ -212,6 +212,67 @@ that this repo's own install/build/start behavior is correct and matches what Bo
 does, but if something in their dashboard doesn't match what's described here, tell me exactly
 what you see and I'll adjust.
 
+## Deploying to Vercel (no card required)
+
+Unlike Bonto and Render, [Vercel](https://vercel.com) runs this app as a serverless function
+rather than a normal always-on server. `api/[...slug].ts` at the repo root wraps the same Express
+app (`server/src/app.ts`) used everywhere else, so almost all of the app's behavior is identical —
+but two background jobs that normally run continuously (retrying failed Google Sheets syncs every
+5 minutes, marking absent doctors at 23:59 Cairo time) can't work the same way here, since nothing
+stays running between requests. See **Background jobs on Vercel** below before relying on this.
+
+As with Bonto, there's no built-in database, so this pairs with [Neon](https://neon.tech) (free,
+no card) again.
+
+1. **Create a Neon project** as in the Bonto steps above, if you haven't already. Neon gives you
+   two connection strings — a **pooled** one (recommended for `DATABASE_URL` here, since a
+   serverless function can open many more concurrent connections than a normal server would) and
+   a direct one. Use the pooled one.
+2. **Create a Vercel account** at [vercel.com](https://vercel.com) (no card) and import this
+   GitHub repo as a new project. Vercel should detect `vercel.json` at the repo root automatically.
+3. **Set these environment variables** in the Vercel project's settings:
+   - `NODE_ENV=production`
+   - `DATABASE_URL` — Neon's pooled connection string
+   - `SESSION_SECRET` — generate one with `openssl rand -hex 32`
+   - `CRON_SECRET` — another random string (`openssl rand -hex 32` again); this is what lets
+     Vercel's own Cron Jobs call the mark-absent endpoint without a manager login, and Vercel
+     automatically sends it as a Bearer token to any request it makes on a schedule once this is set
+   - `MANAGER1_EMAIL` / `MANAGER1_TEMP_PASSWORD` / `MANAGER2_EMAIL` / `MANAGER2_TEMP_PASSWORD`
+   - `GOOGLE_SERVICE_ACCOUNT_EMAIL` / `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` / `GOOGLE_SHEET_ID` —
+     leave blank to skip Sheets sync
+   - Leave `CLIENT_ORIGIN` unset for now
+4. **Deploy.** Vercel gives you a URL like `https://your-project.vercel.app`.
+5. **Set `CLIENT_ORIGIN`** to that URL and redeploy (Vercel doesn't auto-restart on an env var
+   change the way Render/Bonto do — trigger a new deployment from the dashboard).
+6. **Seed the manager accounts and sample data** once, the same way as the Bonto steps: temporarily
+   put Neon's connection string into `server/.env`, run `npm run prisma:seed`, then restore it.
+
+### Background jobs on Vercel
+
+- **End-of-day absent marking** runs automatically via Vercel's own Cron Jobs (configured in
+  `vercel.json`), once daily. Vercel's free tier only allows once-per-day schedules with timing
+  guaranteed within the hour (not to the minute) — the schedule here is deliberately set to a UTC
+  time that always lands safely *after* 23:59 Cairo time, in both DST states, so it never runs too
+  early and marks someone absent before their last session of the day even ends.
+- **Google Sheets retry sync** has no automatic schedule on Vercel — the free tier can't run
+  anything more often than once a day, which isn't enough for a "retry every 5 minutes" job. Use
+  the **"Retry sync now"** button on the manager dashboard instead; the underlying endpoint
+  (`/api/cron/retry-sync`) is still there if you ever want to point an external free scheduler
+  (e.g. [cron-job.org](https://cron-job.org)) at it, sending `Authorization: Bearer <CRON_SECRET>`.
+
+### Caveats
+
+I've verified the app itself is Vercel-compatible — the shared Express app correctly skips
+server-side static file serving and the `trust proxy` setting (Vercel's own static hosting and
+proxy handle those), the Prisma schema declares the extra `rhel-openssl-3.0.x` binary target
+Vercel's Lambda runtime needs, and I confirmed locally (by driving the exported function directly)
+that routing, the cron secret check, and the health endpoint all behave correctly. What I *haven't*
+been able to test is Vercel's actual build/deploy pipeline itself — I don't have an account there,
+so I can't rule out something Vercel-specific (their exact TypeScript bundling behavior, real
+Lambda cold-start behavior, the Cron Jobs dashboard UI) going differently than expected. If the
+build or a request fails in a way that doesn't match what's described here, paste me the exact
+error and I'll fix it.
+
 ## Schedule import
 
 There are three ways to build the schedule:

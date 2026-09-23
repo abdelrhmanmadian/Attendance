@@ -14,6 +14,10 @@ const envSchema = z.object({
   GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().optional().default(""),
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z.string().optional().default(""),
   GOOGLE_SHEET_ID: z.string().optional().default(""),
+  // Only used on Vercel: verifies requests to /api/cron/* actually come from
+  // Vercel's own Cron Jobs scheduler (which sends this as a Bearer token when
+  // the env var of the same name is set), not just anyone who finds the URL.
+  CRON_SECRET: z.string().optional().default(""),
 });
 
 export const env = envSchema.parse(process.env);
