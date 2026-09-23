@@ -24,6 +24,9 @@ authRouter.post("/login", async (req, res) => {
   }
 
   req.session.managerId = manager.id;
+  res.on("finish", () => {
+    console.log("[diag] login response set-cookie:", res.getHeader("set-cookie"), "sessionID:", req.sessionID);
+  });
   res.json({
     id: manager.id,
     email: manager.email,
