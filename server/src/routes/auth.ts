@@ -34,11 +34,25 @@ authRouter.post("/login", async (req, res) => {
       console.error("Failed to save session on login:", err);
       return res.status(500).json({ error: "SESSION_ERROR", message: "Could not start session." });
     }
+    res.cookie("diag_manual_test", "hello", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: 60000,
+      path: "/",
+    });
+    console.log(
+      "[diag] before res.json — set-cookie:",
+      res.getHeader("set-cookie"),
+      "headersSent:",
+      res.headersSent
+    );
     res.json({
       id: manager.id,
       email: manager.email,
       mustChangePassword: manager.mustChangePassword,
     });
+    console.log("[diag] after res.json — set-cookie:", res.getHeader("set-cookie"));
   });
 });
 
