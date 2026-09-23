@@ -20,6 +20,7 @@ import { jobsRouter } from "./routes/jobs.js";
 import { settingsRouter } from "./routes/settings.js";
 import { cronRouter } from "./routes/cron.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { SESSION_COOKIE_NAME, sessionCookieOptions } from "./lib/sessionCookie.js";
 
 // Set by Vercel automatically at build and runtime — never set on Bonto,
 // Render, or local dev. Used to skip the static-file serving below, since
@@ -46,7 +47,7 @@ app.use(
 app.use(express.json());
 app.use(
   session({
-    name: "attendance.sid",
+    name: SESSION_COOKIE_NAME,
     secret: env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
@@ -60,12 +61,7 @@ app.use(
             createTableIfMissing: true,
           })
         : undefined,
-    cookie: {
-      httpOnly: true,
-      secure: env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 12 * 60 * 60 * 1000, // 12 hours
-    },
+    cookie: sessionCookieOptions,
   })
 );
 

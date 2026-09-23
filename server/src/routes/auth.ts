@@ -1,8 +1,11 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
+import { sign } from "cookie-signature";
 import { prisma } from "../lib/prisma.js";
 import { requireManager } from "../middleware/auth.js";
 import { loginSchema, changePasswordSchema } from "../validators/auth.js";
+import { env } from "../env.js";
+import { SESSION_COOKIE_NAME, sessionCookieOptions } from "../lib/sessionCookie.js";
 
 export const authRouter = Router();
 
@@ -24,41 +27,30 @@ authRouter.post("/login", async (req, res) => {
   }
 
   req.session.managerId = manager.id;
-  // On Vercel's serverless runtime, the function's response can finalize
-  // before express-session's implicit "save on res.end" hook completes its
-  // async write to the store, so the Set-Cookie header never makes it out.
-  // Saving explicitly and only responding once that's confirmed is the
-  // documented fix for serverless deployments.
   req.session.save((err) => {
     if (err) {
       console.error("Failed to save session on login:", err);
       return res.status(500).json({ error: "SESSION_ERROR", message: "Could not start session." });
     }
-    res.cookie("diag_manual_test", "hello", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "strict",
-      maxAge: 60000,
-      path: "/",
-    });
-    console.log(
-      "[diag] before res.json — set-cookie:",
-      res.getHeader("set-cookie"),
-      "headersSent:",
-      res.headersSent
-    );
+    // express-session's own automatic Set-Cookie (normally fired from a
+    // patched res.end once the store write completes) never reaches the
+    // client on Vercel's serverless runtime — confirmed via runtime logs
+    // showing the store write succeeding but no Set-Cookie header on the
+    // response, even with the explicit save() above. Signing and setting
+    // the cookie ourselves, in the exact format express-session expects on
+    // the way back in, sidesteps that broken hook entirely.
+    res.cookie(SESSION_COOKIE_NAME, `s:${sign(req.sessionID, env.SESSION_SECRET)}`, sessionCookieOptions);
     res.json({
       id: manager.id,
       email: manager.email,
       mustChangePassword: manager.mustChangePassword,
     });
-    console.log("[diag] after res.json — set-cookie:", res.getHeader("set-cookie"));
   });
 });
 
 authRouter.post("/logout", (req, res) => {
   req.session.destroy(() => {
-    res.clearCookie("attendance.sid");
+    res.clearCookie(SESSION_COOKIE_NAME);
     res.status(204).end();
   });
 });
