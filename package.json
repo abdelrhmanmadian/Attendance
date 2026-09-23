@@ -8,9 +8,9 @@
   "scripts": {
     "dev": "concurrently -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w server && npm run build -w client",
-    "postinstall": "npx prisma generate --schema server/prisma/schema.prisma && npm run build",
-    "start": "npx prisma migrate deploy --schema server/prisma/schema.prisma && npm run start -w server",
-    "vercel-build": "npx prisma migrate deploy --schema server/prisma/schema.prisma",
+    "postinstall": "npx prisma generate --schema server/prisma/schema.prisma",
+    "start": "npm run build && npx prisma migrate deploy --schema server/prisma/schema.prisma && npm run start -w server",
+    "vercel-build": "npm run build -w client && npx prisma migrate deploy --schema server/prisma/schema.prisma",
     "test": "npm run test -w server",
     "prisma:migrate": "npm run prisma:migrate -w server",
     "prisma:deploy": "npm run prisma:deploy -w server",
