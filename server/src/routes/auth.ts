@@ -24,13 +24,21 @@ authRouter.post("/login", async (req, res) => {
   }
 
   req.session.managerId = manager.id;
-  res.on("finish", () => {
-    console.log("[diag] login response set-cookie:", res.getHeader("set-cookie"), "sessionID:", req.sessionID);
-  });
-  res.json({
-    id: manager.id,
-    email: manager.email,
-    mustChangePassword: manager.mustChangePassword,
+  // On Vercel's serverless runtime, the function's response can finalize
+  // before express-session's implicit "save on res.end" hook completes its
+  // async write to the store, so the Set-Cookie header never makes it out.
+  // Saving explicitly and only responding once that's confirmed is the
+  // documented fix for serverless deployments.
+  req.session.save((err) => {
+    if (err) {
+      console.error("Failed to save session on login:", err);
+      return res.status(500).json({ error: "SESSION_ERROR", message: "Could not start session." });
+    }
+    res.json({
+      id: manager.id,
+      email: manager.email,
+      mustChangePassword: manager.mustChangePassword,
+    });
   });
 });
 
