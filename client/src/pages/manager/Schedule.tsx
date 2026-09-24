@@ -89,6 +89,7 @@ export default function Schedule() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editingIds, setEditingIds] = useState<string[] | null>(null);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showImport, setShowImport] = useState(false);
@@ -114,6 +115,7 @@ export default function Schedule() {
 
   function startEdit(row: MergedRow) {
     const first = sessions.find((s) => s.id === row.ids[0])!;
+    setCreating(false);
     setEditingIds(row.ids);
     setForm({
       date: selectedDate,
@@ -127,15 +129,34 @@ export default function Schedule() {
     });
   }
 
+  function startCreate() {
+    setEditingIds(null);
+    setCreating(true);
+    setForm({ ...emptyForm, date: selectedDate });
+  }
+
   function cancelEdit() {
     setEditingIds(null);
+    setCreating(false);
     setForm({ ...emptyForm, date: selectedDate });
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!editingIds) return;
+    if (!editingIds && !creating) return;
     setError(null);
+
+    if (creating) {
+      try {
+        await api.post("/sessions", { ...form, groupName: form.groupName || undefined });
+        cancelEdit();
+        await loadSessions();
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Failed to add session.");
+      }
+      return;
+    }
+    if (!editingIds) return;
     // A merged row can represent several underlying sessions (one per
     // student group sharing the same class). Group name is the one field
     // that legitimately differs between them, so only send it through when
@@ -200,6 +221,12 @@ export default function Schedule() {
         <h1 className="text-2xl font-bold text-slate-800">Schedule</h1>
         <div className="flex gap-2">
           <button
+            onClick={startCreate}
+            className="bg-slate-800 text-white rounded px-4 py-2 text-sm font-medium"
+          >
+            Add Session
+          </button>
+          <button
             onClick={() => setShowImport(true)}
             className="bg-slate-800 text-white rounded px-4 py-2 text-sm font-medium"
           >
@@ -257,8 +284,11 @@ export default function Schedule() {
         />
       </div>
 
-      {editingIds && (
+      {(editingIds || creating) && (
         <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-lg p-4 mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <p className="col-span-2 sm:col-span-4 text-sm font-medium text-slate-600">
+            {creating ? `New session on ${selectedDate}` : "Edit session"}
+          </p>
           <input
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -277,8 +307,12 @@ export default function Schedule() {
             value={form.groupName}
             onChange={(e) => setForm({ ...form, groupName: e.target.value })}
             placeholder="Group (optional)"
-            disabled={(editingIds?.length ?? 0) > 1}
-            title={(editingIds?.length ?? 0) > 1 ? "This class covers multiple groups — edit each group's session individually to change its group name." : undefined}
+            disabled={!creating && (editingIds?.length ?? 0) > 1}
+            title={
+              !creating && (editingIds?.length ?? 0) > 1
+                ? "This class covers multiple groups — edit each group's session individually to change its group name."
+                : undefined
+            }
             className="rounded border border-slate-300 px-3 py-2 disabled:bg-slate-100 disabled:text-slate-400"
           />
           <input
@@ -317,7 +351,7 @@ export default function Schedule() {
           </select>
           <div className="col-span-2 sm:col-span-4 flex gap-2">
             <button type="submit" className="bg-slate-800 text-white rounded px-4 py-2 font-medium">
-              Save changes
+              {creating ? "Add session" : "Save changes"}
             </button>
             <button type="button" onClick={cancelEdit} className="rounded border border-slate-300 px-4 py-2">
               Cancel
