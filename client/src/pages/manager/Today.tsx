@@ -22,9 +22,8 @@ interface Code {
 
 interface AttendanceInfo {
   id: string;
-  status: "PRESENT" | "LATE" | "ABSENT";
+  status: "PRESENT" | "ABSENT";
   checkInTime: string | null;
-  minutesLate: number;
 }
 
 interface DoctorRow {
@@ -46,7 +45,12 @@ function formatTime(iso: string) {
 
 const REFRESH_MS = 20_000;
 
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export default function Today() {
+  const [selectedDate, setSelectedDate] = useState(todayStr());
   const [data, setData] = useState<TodayResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyDoctorId, setBusyDoctorId] = useState<string | null>(null);
@@ -55,24 +59,27 @@ export default function Today() {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get<TodayResponse>("/codes/today");
+      const res = await api.get<TodayResponse>(`/codes/today?date=${selectedDate}`);
       setData(res);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to load today's schedule.");
+      setError(err instanceof ApiError ? err.message : "Failed to load schedule.");
     }
-  }, []);
+  }, [selectedDate]);
 
   useEffect(() => {
     load();
+    // Only worth auto-refreshing while looking at today — a past date's
+    // attendance doesn't change on its own.
+    if (selectedDate !== todayStr()) return;
     const interval = setInterval(load, REFRESH_MS);
     return () => clearInterval(interval);
-  }, [load]);
+  }, [load, selectedDate]);
 
   async function handleGenerate(doctorId: string) {
     setBusyDoctorId(doctorId);
     setError(null);
     try {
-      await api.post("/codes/generate", { doctorId });
+      await api.post("/codes/generate", { doctorId, date: selectedDate });
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to generate code.");
@@ -85,7 +92,7 @@ export default function Today() {
     setBusyDoctorId("__all__");
     setError(null);
     try {
-      await api.post("/codes/generate-all", {});
+      await api.post("/codes/generate-all", { date: selectedDate });
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to generate codes.");
@@ -127,17 +134,31 @@ export default function Today() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="text-2xl font-bold text-slate-800">Today</h1>
-        <button
-          onClick={handleGenerateAll}
-          disabled={busyDoctorId === "__all__"}
-          className="bg-slate-800 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
-        >
-          Generate all for today
-        </button>
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <h1 className="text-2xl font-bold text-slate-800">
+          {selectedDate === todayStr() ? "Today" : "Attendance"}
+        </h1>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="rounded border border-slate-300 px-3 py-2 text-sm"
+          />
+          {selectedDate === todayStr() && (
+            <button
+              onClick={handleGenerateAll}
+              disabled={busyDoctorId === "__all__"}
+              className="bg-slate-800 text-white rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              Generate all
+            </button>
+          )}
+        </div>
       </div>
-      <p className="text-sm text-slate-500 mb-6">{data.date} (Cairo time) — auto-refreshes every 20s</p>
+      <p className="text-sm text-slate-500 mb-6">
+        {data.date} (Cairo time){selectedDate === todayStr() && " — auto-refreshes every 20s"}
+      </p>
 
       <div className="flex gap-4 mb-6">
         <div className="bg-white border border-slate-200 rounded-lg px-6 py-4">
@@ -179,15 +200,10 @@ export default function Today() {
                 <div className="text-sm mt-1">
                   <span
                     className={
-                      row.attendance.status === "PRESENT"
-                        ? "text-green-700 font-medium"
-                        : row.attendance.status === "LATE"
-                          ? "text-amber-600 font-medium"
-                          : "text-red-600 font-medium"
+                      row.attendance.status === "PRESENT" ? "text-green-700 font-medium" : "text-red-600 font-medium"
                     }
                   >
                     {row.attendance.status}
-                    {row.attendance.status === "LATE" && ` (${row.attendance.minutesLate}m)`}
                   </span>
                   {row.attendance.checkInTime && (
                     <span className="text-xs text-slate-400 ml-2">at {formatTime(row.attendance.checkInTime)}</span>
@@ -196,38 +212,39 @@ export default function Today() {
               )}
             </div>
             <div className="flex gap-2 flex-wrap">
-              {!row.code || row.code.revoked ? (
-                <button
-                  onClick={() => handleGenerate(row.doctor.id)}
-                  disabled={busyDoctorId === row.doctor.id}
-                  className="bg-slate-800 text-white rounded px-3 py-1.5 text-sm font-medium disabled:opacity-50"
-                >
-                  Generate
-                </button>
-              ) : (
-                <>
+              {selectedDate === todayStr() &&
+                (!row.code || row.code.revoked ? (
                   <button
-                    onClick={() => setProjectorRow(row)}
-                    className="rounded border border-slate-300 px-3 py-1.5 text-sm"
-                  >
-                    Display
-                  </button>
-                  <button
-                    onClick={() => handleRegenerate(row.code!.id, row.doctor.id)}
+                    onClick={() => handleGenerate(row.doctor.id)}
                     disabled={busyDoctorId === row.doctor.id}
-                    className="rounded border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
+                    className="bg-slate-800 text-white rounded px-3 py-1.5 text-sm font-medium disabled:opacity-50"
                   >
-                    Regenerate
+                    Generate
                   </button>
-                  <button
-                    onClick={() => handleRevoke(row.code!.id, row.doctor.id)}
-                    disabled={busyDoctorId === row.doctor.id}
-                    className="text-red-600 text-sm px-2 disabled:opacity-50"
-                  >
-                    Revoke
-                  </button>
-                </>
-              )}
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setProjectorRow(row)}
+                      className="rounded border border-slate-300 px-3 py-1.5 text-sm"
+                    >
+                      Display
+                    </button>
+                    <button
+                      onClick={() => handleRegenerate(row.code!.id, row.doctor.id)}
+                      disabled={busyDoctorId === row.doctor.id}
+                      className="rounded border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
+                    >
+                      Regenerate
+                    </button>
+                    <button
+                      onClick={() => handleRevoke(row.code!.id, row.doctor.id)}
+                      disabled={busyDoctorId === row.doctor.id}
+                      className="text-red-600 text-sm px-2 disabled:opacity-50"
+                    >
+                      Revoke
+                    </button>
+                  </>
+                ))}
               <button
                 onClick={() => setOverrideRow(row)}
                 className="rounded border border-slate-300 px-3 py-1.5 text-sm"
@@ -238,7 +255,7 @@ export default function Today() {
           </div>
         ))}
         {data.doctors.length === 0 && (
-          <div className="p-8 text-center text-slate-400">No doctors scheduled today.</div>
+          <div className="p-8 text-center text-slate-400">No doctors scheduled for this date.</div>
         )}
       </div>
 

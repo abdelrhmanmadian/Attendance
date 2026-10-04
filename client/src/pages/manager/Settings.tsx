@@ -5,7 +5,6 @@ interface SettingsData {
   codeLength: number;
   windowBeforeMin: number;
   windowAfterMin: number;
-  gracePeriodMin: number;
 }
 
 export default function Settings() {
@@ -78,21 +77,6 @@ export default function Settings() {
             onChange={(e) => setSettings({ ...settings, windowAfterMin: Number(e.target.value) })}
             className="w-full rounded border border-slate-300 px-3 py-2"
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Grace period (minutes)</label>
-          <input
-            type="number"
-            min={0}
-            max={120}
-            value={settings.gracePeriodMin}
-            onChange={(e) => setSettings({ ...settings, gracePeriodMin: Number(e.target.value) })}
-            className="w-full rounded border border-slate-300 px-3 py-2"
-          />
-          <p className="text-xs text-slate-400 mt-1">
-            A doctor checking in at or before (first session start + this many minutes) is marked Present.
-          </p>
         </div>
 
         {error && <div className="text-sm text-red-600 bg-red-50 rounded p-2">{error}</div>}

@@ -1,7 +1,6 @@
 import { prisma } from "../lib/prisma.js";
-import { getSettings } from "../lib/settings.js";
 import { todayCairoDateOnly, toCairoTimeStr } from "../lib/time.js";
-import { computeAttendanceStatus, formatSessionsSummary } from "../lib/attendanceStatusCalc.js";
+import { formatSessionsSummary } from "../lib/attendanceStatusCalc.js";
 
 export type CheckinFailureCode =
   | "DOCTOR_NOT_FOUND"
@@ -52,9 +51,6 @@ export async function performCheckin(doctorId: string, codeStr: string) {
   }
 
   const sessions = await prisma.session.findMany({ where: { doctorId, date: today }, orderBy: { start: "asc" } });
-  const settings = await getSettings();
-  const firstSession = sessions[0];
-  const { status, minutesLate } = computeAttendanceStatus(firstSession.start, now, settings.gracePeriodMin);
   const sessionsScheduled = formatSessionsSummary(sessions, toCairoTimeStr);
 
   const attendance = await prisma.$transaction(async (tx) => {
@@ -64,8 +60,7 @@ export async function performCheckin(doctorId: string, codeStr: string) {
         doctorName: doctor.name,
         date: today,
         checkInTime: now,
-        status,
-        minutesLate,
+        status: "PRESENT",
         codeUsed: code.code,
         sessionsScheduled,
         syncedToSheet: false,

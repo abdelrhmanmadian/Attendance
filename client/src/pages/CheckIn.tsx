@@ -18,7 +18,7 @@ interface SessionInfo {
 interface CheckinResult {
   doctorName: string;
   checkInTime: string;
-  status: "PRESENT" | "LATE" | "ABSENT";
+  status: "PRESENT" | "ABSENT";
   sessions: SessionInfo[];
 }
 
@@ -70,17 +70,12 @@ export default function CheckIn() {
   }
 
   if (result) {
-    const isLate = result.status === "LATE";
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-slate-50">
         <div className="w-full max-w-sm text-center">
-          <div className={`text-5xl mb-4 ${isLate ? "text-amber-500" : "text-green-600"}`}>
-            {isLate ? "⏰" : "✅"}
-          </div>
+          <div className="text-5xl mb-4 text-green-600">✅</div>
           <h1 className="text-2xl font-bold text-slate-800 mb-1">{result.doctorName}</h1>
-          <p className={`text-lg font-semibold mb-4 ${isLate ? "text-amber-600" : "text-green-700"}`}>
-            {isLate ? "Checked in — Late" : "Checked in — Present"}
-          </p>
+          <p className="text-lg font-semibold mb-4 text-green-700">Checked in — Present</p>
           <p className="text-slate-500 mb-6">
             {new Date(result.checkInTime).toLocaleTimeString("en-GB", {
               timeZone: "Africa/Cairo",

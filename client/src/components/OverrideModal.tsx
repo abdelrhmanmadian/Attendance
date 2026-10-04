@@ -5,14 +5,13 @@ interface Props {
   doctorId: string;
   doctorName: string;
   date: string;
-  currentStatus?: "PRESENT" | "LATE" | "ABSENT";
+  currentStatus?: "PRESENT" | "ABSENT";
   onClose: () => void;
   onSaved: () => void;
 }
 
 export default function OverrideModal({ doctorId, doctorName, date, currentStatus, onClose, onSaved }: Props) {
-  const [status, setStatus] = useState<"PRESENT" | "LATE" | "ABSENT">(currentStatus ?? "PRESENT");
-  const [minutesLate, setMinutesLate] = useState(0);
+  const [status, setStatus] = useState<"PRESENT" | "ABSENT">(currentStatus ?? "PRESENT");
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,13 +24,7 @@ export default function OverrideModal({ doctorId, doctorName, date, currentStatu
     setSubmitting(true);
     setError(null);
     try {
-      await api.post("/attendance/override", {
-        doctorId,
-        date,
-        status,
-        minutesLate: status === "LATE" ? minutesLate : undefined,
-        note,
-      });
+      await api.post("/attendance/override", { doctorId, date, status, note });
       onSaved();
       onClose();
     } catch (err) {
@@ -56,22 +49,8 @@ export default function OverrideModal({ doctorId, doctorName, date, currentStatu
           className="w-full mb-4 rounded border border-slate-300 px-3 py-2"
         >
           <option value="PRESENT">Present</option>
-          <option value="LATE">Late</option>
           <option value="ABSENT">Absent</option>
         </select>
-
-        {status === "LATE" && (
-          <>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Minutes late</label>
-            <input
-              type="number"
-              min={0}
-              value={minutesLate}
-              onChange={(e) => setMinutesLate(Number(e.target.value))}
-              className="w-full mb-4 rounded border border-slate-300 px-3 py-2"
-            />
-          </>
-        )}
 
         <label className="block text-sm font-medium text-slate-700 mb-1">Note (required)</label>
         <textarea

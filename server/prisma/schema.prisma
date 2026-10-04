@@ -76,7 +76,7 @@ model Code {
 
 // Plain string rather than a Prisma enum, validated in app code via the
 // AttendanceStatus union in src/lib/attendanceStatus.ts instead — keeps
-// status handling in one place alongside the Present/Late/Absent logic.
+// status handling in one place alongside the Present/Absent logic.
 model Attendance {
   id                String    @id @default(cuid())
   doctorId          String
@@ -84,7 +84,9 @@ model Attendance {
   doctorName        String // snapshot, survives rename
   date              DateTime // Cairo calendar date, UTC midnight
   checkInTime       DateTime? // UTC instant, null for Absent
-  status            String // "PRESENT" | "LATE" | "ABSENT"
+  status            String // "PRESENT" | "ABSENT"
+  // Unused since Late was removed as a status (kept rather than migrated
+  // away to avoid a schema change purely for an always-zero column).
   minutesLate       Int       @default(0)
   codeUsed          String?
   sessionsScheduled String // "Lecture 09:00 Anatomy; Tutorial 13:00 Ward A"
@@ -118,6 +120,8 @@ model Settings {
   codeLength      Int @default(6)
   windowBeforeMin Int @default(15)
   windowAfterMin  Int @default(15)
+  // Unused since Late was removed as an attendance status (kept rather than
+  // migrated away to avoid a schema change purely for a dead column).
   gracePeriodMin  Int @default(10)
 }
 

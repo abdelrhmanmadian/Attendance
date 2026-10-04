@@ -15,7 +15,6 @@ export async function overrideAttendance(params: {
   doctorId: string;
   date: string;
   status: AttendanceStatus;
-  minutesLate?: number;
   note: string;
   managerId: string;
 }) {
@@ -33,12 +32,9 @@ export async function overrideAttendance(params: {
     where: { doctorId_date: { doctorId: params.doctorId, date: dateOnly } },
   });
 
-  const minutesLate = params.status === "LATE" ? params.minutesLate ?? 0 : 0;
-
   const data = {
     doctorName: doctor.name,
     status: params.status,
-    minutesLate,
     sessionsScheduled,
     syncedToSheet: false,
     lastSyncError: null,

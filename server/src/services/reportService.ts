@@ -4,8 +4,8 @@ import { cairoDateOnly, toCairoDateStr } from "../lib/time.js";
 
 export interface DailyAttendanceReportRow {
   date: string;
-  attended: string[]; // doctor names who checked in (present or late)
-  absent: string[]; // scheduled doctors with no present/late record that day
+  attended: string[]; // doctor names marked present that day
+  absent: string[]; // scheduled doctors with no present record that day
 }
 
 /** One row per calendar date in [from, to]; days with nobody scheduled are skipped. */
@@ -34,7 +34,7 @@ export async function buildDailyAttendanceReport(
     const nameById = new Map(doctors.map((d) => [d.id, d.name]));
 
     const attendances = await prisma.attendance.findMany({
-      where: { date, doctorId: { in: scheduledIds }, status: { in: ["PRESENT", "LATE"] } },
+      where: { date, doctorId: { in: scheduledIds }, status: "PRESENT" },
       select: { doctorId: true },
     });
     const attendedIds = new Set(attendances.map((a) => a.doctorId));
